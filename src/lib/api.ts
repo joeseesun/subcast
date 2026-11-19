@@ -72,6 +72,8 @@ export const api = {
   loadTranscript: (episodeId: string) => invoke<Transcript | null>("load_transcript", { episodeId }),
   fetchOfficialTranscript: (episodeId: string) => invoke<Transcript | null>("fetch_official_transcript", { episodeId }),
   transcribe: (episodeId: string, model: string, language: string, cloud?: CloudAsr) => invoke<Transcript>("transcribe", { episodeId, model, language, cloud: cloud ?? null }),
+  /** A few seconds of 16 kHz WAV, as base64, turned into text with the subtitle recogniser. */
+  dictate: (wavBase64: string, model: string, language: string, cloud?: CloudAsr) => invoke<string>("dictate", { wavBase64, model, language, cloud: cloud ?? null }),
   cancelJob: (id: string) => invoke<void>("cancel_job", { id }),
   asrModels: () => invoke<ModelInfo[]>("asr_models"),
   logListen: (episodeId: string, showId: string, seconds: number, translated: boolean) => invoke<void>("log_listen", { episodeId, showId, seconds, translated }),

@@ -2107,3 +2107,12 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
 .btn .kbd { margin-left: 4px; }
 /* Settings › 通用 › YouTube 账号 */
 .yt-account-state { flex: 1; color: var(--text-2); font-size: 13px; }
+.notes-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.notes-scroll { flex: 1; min-height: 0; overflow: auto; padding: 8px 12px 4px; display: flex; flex-direction: column; gap: 8px; }
+.note-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--soft); }
+.note-card p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
+.note-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.note-meta button { border: 0; background: none; color: inherit; cursor: pointer; padding: 0; display: inline-flex; align-items: center; }
+.note-meta button:hover { color: var(--text); }
+.notes-panel .composer { margin: 0 12px 12px; }
+.notes-panel .icon-btn.on { color: var(--danger); }

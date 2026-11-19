@@ -1263,6 +1263,54 @@ fn delete_model(state: State<'_, AppState>, id: String) -> Res<()> {
 
 // ---- stored data and settings ------------------------------------------------------------------------
 
+/// A few seconds spoken into the notes panel. Same recogniser as subtitles, but it is not saved as one.
+#[tauri::command]
+async fn dictate(state: State<'_, AppState>, wav_base64: String, model: String, language: String, cloud: Option<cloud::CloudAsr>) -> Res<String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(wav_base64.trim()).map_err(e)?;
+    if bytes.len() < 44 { return Err("没有听到声音".into()); }
+    if bytes.len() > 2_000_000 { return Err("录音太长了，说短一点".into()); }
+    let local = if cloud.is_none() {
+        let spec = asr::resolve(&state.data, &model).ok_or("未知模型")?;
+        if !spec.path.is_file() { return Err("请先下载识别模型".into()); }
+        if spec.engine == "qwen3" && asr::find_crispasr(&state.data).is_none() {
+            return Err("本地识别程序还没准备好。先在字幕里转写一集，或在设置里改用云端语音。".into());
+        }
+        Some((spec.engine, spec.path))
+    } else {
+        None
+    };
+    let work = state.data.join("work").join(format!("dictate-{}", uuid::Uuid::new_v4().simple()));
+    tokio::fs::create_dir_all(&work).await.map_err(e)?;
+    let wav = work.join("note.wav");
+    if let Err(err) = tokio::fs::write(&wav, &bytes).await { let _ = tokio::fs::remove_dir_all(&work).await; return Err(e(err)); }
+    let cancel = Arc::new(AtomicBool::new(false));
+    let ctx = asr::AsrContext::default();
+    let outcome = async {
+        let segments = if let Some(cfg) = &cloud {
+            let src = wav.clone();
+            let samples = tokio::task::spawn_blocking(move || asr::decode_16k_mono(&src)).await.map_err(e)?.map_err(e)?;
+            cloud::transcribe(cfg, samples, &language, &ctx, cancel, |_| {}).await.map_err(e)?
+        } else {
+            let (engine, model_path) = local.unwrap();
+            if engine == "qwen3" {
+                let bin = asr::find_crispasr(&state.data).ok_or("本地识别程序还没准备好。先在字幕里转写一集，或在设置里改用云端语音。")?;
+                let wav16 = work.join("note16k.wav");
+                let src = wav.clone();
+                let dest = wav16.clone();
+                tokio::task::spawn_blocking(move || -> anyhow::Result<()> { asr::write_wav(&dest, &asr::decode_16k_mono(&src)?) }).await.map_err(e)?.map_err(e)?;
+                asr::run_crispasr(&bin, &model_path, &wav16, &language, &ctx, cancel, |_| {}).await.map_err(e)?
+            } else {
+                asr::run_worker(&wav, &model_path, &language, "", cancel, |_| {}).await.map(|r| r.segments).map_err(e)?
+            }
+        };
+        let text = segments.into_iter().map(|s| s.text.trim().to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
+        if text.is_empty() { Err("没有识别出文字（可能是纯音乐或静音）".to_string()) } else { Ok(text) }
+    }.await;
+    let _ = tokio::fs::remove_dir_all(&work).await;
+    outcome
+}
+
 #[tauri::command]
 fn get_blob(state: State<'_, AppState>, episode_id: String, kind: String) -> Res<Option<String>> {
     db::get_blob(&state.db.lock().unwrap(), &episode_id, &kind).map_err(e)
@@ -1496,7 +1544,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             add_subscription, refresh_show, refresh_all, list_shows, list_episodes, recent_episodes, get_episode, remove_show,
-            set_progress, search_podcasts, search_show, load_transcript, fetch_official_transcript, transcribe, cancel_job, asr_models,
+            set_progress, search_podcasts, search_show, load_transcript, fetch_official_transcript, transcribe, dictate, cancel_job, asr_models,
             download_model, delete_model, get_blob, set_blob, get_settings, set_settings, set_api_key, has_api_key, llm_chat, translate_texts, shared_transcript, shared_exists, shared_guide, share_guide, asr_elsewhere, log_listen, listening_stats, rescan_models, youtube_subscriptions, open_privacy_settings, export_opml, local_agents, probe_agent, agent_models, warm_agent, share_translation, ui_ready, ui_check, refresh_config, youtube_stream, prepare_youtube, youtube_sign_in, youtube_signed_in, youtube_sign_out, youtube_tracks, use_youtube_track, qiaomu_detail, preview_show, list_models, tts_speak, cached_show, save_image, learn_clip, save_text, export_anki, set_menu_labels,
             app_update_check, app_update_download, app_update_install,
             download_episode, list_downloads, delete_download, clear_downloads, align_audio, save_time_map, list_audio_cache, clear_audio_cache, storage_info, open_data_folder, reveal_download, clear_temp, full_notes

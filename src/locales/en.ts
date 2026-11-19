@@ -1252,6 +1252,22 @@ const dict: Record<string, string> = {
   "先在「语音识别」里下载一个本机模型，才能自动比对": "Download an on-device model in Speech recognition first to compare automatically",
   "Qwen3-ASR 识别程序还没准备好，先转写一集就会自动安装": "The Qwen3-ASR program isn't ready yet. Transcribe one episode and it installs automatically",
   "缓存音频失败": "Couldn't keep the audio",
+  "笔记": "Notes",
+  "还没有笔记": "No notes yet",
+  "在字幕、导读或问答里选中一句，点「记到笔记」。也可以在下面打字或说话。": "Select a sentence in subtitles, the guide or Q&A, then choose Save to notes. You can also type or speak below.",
+  "记到笔记": "Save to notes",
+  "已记到笔记": "Saved to notes",
+  "先打开一集，才能记笔记": "Open an episode before saving a note",
+  "写一句，或点麦克风说": "Write a line, or tap the mic and speak",
+  "自己写的": "Written here",
+  "语音": "Voice",
+  "删除这条笔记": "Delete this note",
+  "正在听…": "Listening…",
+  "停止并记下": "Stop and keep the words",
+  "麦克风没有打开": "The microphone didn't open",
+  "没有听到声音": "No sound came through",
+  "录音太长了，说短一点": "That recording is too long. Say it shorter.",
+  "本地识别程序还没准备好。先在字幕里转写一集，或在设置里改用云端语音。": "The local recogniser isn't ready. Transcribe an episode first, or switch to a cloud voice in Settings.",
 };
 
 export default dict;

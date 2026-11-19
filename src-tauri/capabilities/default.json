@@ -23,6 +23,7 @@
     "allow-load-transcript",
     "allow-fetch-official-transcript",
     "allow-transcribe",
+    "allow-dictate",
     "allow-cancel-job",
     "allow-asr-models",
     "allow-download-model",

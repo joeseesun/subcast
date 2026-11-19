@@ -14,7 +14,7 @@ class PanelBoundary extends Component<{ children: ReactNode }, { error: string |
     ) : this.props.children;
   }
 }
-import { ArrowDownToLine, BookOpen, Captions, ChevronDown, ScrollText, ExternalLink, MessageCircle, PanelRightClose, PanelRightOpen, Play, FolderOpen, Trash2, Youtube, Bookmark, Pause } from "lucide-react";
+import { ArrowDownToLine, BookOpen, Captions, ChevronDown, ScrollText, ExternalLink, MessageCircle, NotebookPen, PanelRightClose, PanelRightOpen, Play, FolderOpen, Trash2, Youtube, Bookmark, Pause } from "lucide-react";
 import { BookArt, DoneCheck, EmptyState } from "./Illustrations";
 import { Splitter } from "./Splitter";
 import { DeepRead } from "./DeepRead";
@@ -35,9 +35,10 @@ import { showLinks } from "../lib/showLinks";
 import { toggleFavorite, useLibrary } from "../lib/library";
 import { YtVideoStrip } from "./YtPromo";
 import { activeIndex, TranscriptPanel } from "./TranscriptPanel";
+import { NotesPanel } from "./NotesPanel";
 
-type Tab = "transcript" | "deep" | "chat" | "summary";
-const TAB_NAMES: Record<Tab, string> = { transcript: tk("字幕"), deep: tk("乔木精读"), chat: tk("AI 问答"), summary: tk("AI 导读") };
+type Tab = "transcript" | "deep" | "chat" | "summary" | "notes";
+const TAB_NAMES: Record<Tab, string> = { transcript: tk("字幕"), deep: tk("乔木精读"), chat: tk("AI 问答"), summary: tk("AI 导读"), notes: tk("笔记") };
 
 /** Splits a subtitle block into reading-sized pieces: at the end of each sentence, at a comma once a piece is
  *  long enough, and between words only when a sentence runs on too long. */
@@ -304,6 +305,11 @@ function EpisodeBody({ ep, tab, setTab, startAudio }: { ep: Episode; tab: Tab; s
   }, [ep.id]);
   const notes = notesText(fullNotes ?? ep.notes);
   const { panel, panelOpen, put } = useLayout(useShallow((l) => ({ panel: l.panel, panelOpen: l.panelOpen, put: l.put })));
+  useEffect(() => {
+    const open = () => { put({ panelOpen: true }); setTab("notes"); };
+    window.addEventListener("subcast-open-notes", open);
+    return () => window.removeEventListener("subcast-open-notes", open);
+  }, [put, setTab]);
   // Video first; the audio file is the fallback (and a choice, for listening without the picture).
   const [audioMode, setAudioMode] = useState(startAudio);
   const saved = useOffline((s) => !!s.saved[ep.id]);
@@ -382,6 +388,7 @@ function EpisodeBody({ ep, tab, setTab, startAudio }: { ep: Episode; tab: Tab; s
             {ep.deep && noDeep !== ep.id && <button role="tab" title={t(TAB_NAMES.deep)} aria-label={t(TAB_NAMES.deep)} aria-selected={tab === "deep"} className={tab === "deep" ? "on" : ""} onClick={() => setTab("deep")}><BookOpen size={15} /><span className="tab-label">{t("精读")}</span></button>}
             <button role="tab" title={t(TAB_NAMES.summary)} aria-label={t(TAB_NAMES.summary)} aria-selected={tab === "summary"} className={tab === "summary" ? "on" : ""} onClick={() => setTab("summary")}><ScrollText size={15} /><span className="tab-label">{t("导读")}</span></button>
             <button role="tab" title={t(TAB_NAMES.chat)} aria-label={t(TAB_NAMES.chat)} aria-selected={tab === "chat"} className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}><MessageCircle size={15} /><span className="tab-label">{t("问答")}</span></button>
+            <button role="tab" title={t(TAB_NAMES.notes)} aria-label={t(TAB_NAMES.notes)} aria-selected={tab === "notes"} className={tab === "notes" ? "on" : ""} onClick={() => setTab("notes")}><NotebookPen size={15} /><span className="tab-label">{t("笔记")}</span></button>
             <span className="spacer" data-tauri-drag-region />
             <button className="icon-btn tabs-close" title={t("收起字幕栏（⌘\\）")} onClick={() => put({ panelOpen: false })}><PanelRightClose size={16} /></button>
           </div>
@@ -391,6 +398,7 @@ function EpisodeBody({ ep, tab, setTab, startAudio }: { ep: Episode; tab: Tab; s
               {tab === "chat" && <ChatPanel ep={ep} />}
               {tab === "summary" && <SummaryPanel ep={ep} />}
               {tab === "deep" && <DeepRead ep={ep} onMissing={() => { setNoDeep(ep.id); setTab("transcript"); }}><EmptyState art={<BookArt />} title={t("这一集还没有精读")} note={t("这期没有精读长文，字幕和 AI 导读依然可以帮你")} /></DeepRead>}
+              {tab === "notes" && <NotesPanel ep={ep} />}
 
             </PanelBoundary>
           </div>

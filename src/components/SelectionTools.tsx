@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Copy, Image as ImageIcon, Languages, Loader2, X } from "lucide-react";
-import { api, type Episode } from "../lib/api";
+import { Copy, Image as ImageIcon, Languages, Loader2, NotebookPen, X } from "lucide-react";
+import { api, errorText, type Episode } from "../lib/api";
 import { CJK, POSTER_FONTS, POSTER_THEMES, drawPoster, loadPosterFont, type PosterInput } from "../lib/poster";
 import { showName } from "../lib/picks";
 import { useStore } from "../store";
 import { t, tx } from "../lib/i18n";
+import { addNote, type NoteSource } from "../lib/notes";
 import { Modal } from "./Chrome";
 import logoUrl from "../assets/logo.png";
 
 const ZONES = ".deep-body, .lines, .notes-body, .chat-scroll, .summary";
 
-interface Sel { text: string; x: number; y: number; below: boolean; ts?: string }
+interface Sel { text: string; x: number; y: number; below: boolean; ts?: string; source: NoteSource }
 
 const DOWNLOADS_DIR = /^.*\/(Downloads|下载)\//; // i18n-ignore (macOS folder names)
 
@@ -35,8 +36,9 @@ export function SelectionTools() {
       const rect = r.getBoundingClientRect();
       const ts = (r.startContainer.parentElement?.closest(".line")?.querySelector(".line-time")?.textContent ?? undefined) || undefined;
       const below = rect.top < 70;
+      const source: NoteSource = host.closest(".lines") ? "transcript" : host.closest(".summary") ? "summary" : host.closest(".chat-scroll") ? "chat" : host.closest(".deep-body") ? "deep" : "typed";
       setTr(null);
-      setSel({ text, x: Math.max(8, Math.min(rect.left + rect.width / 2, innerWidth - 8)), y: below ? rect.bottom + 10 : rect.top - 10, below, ts });
+      setSel({ text, x: Math.max(8, Math.min(rect.left + rect.width / 2, innerWidth - 8)), y: below ? rect.bottom + 10 : rect.top - 10, below, ts, source });
     };
     const onChange = () => { window.clearTimeout(timer.current); timer.current = window.setTimeout(read, 220); };
     document.addEventListener("selectionchange", onChange);
@@ -54,6 +56,19 @@ export function SelectionTools() {
     const src = ep ? `——《${ep.title}》${ep.showTitle ? ` · ${showName(ep.showTitle)}` : ""}${sel.ts ? ` · ${sel.ts}` : ""}${ep.link ? `\n${ep.link}` : ""}` : "";
     try { await navigator.clipboard.writeText(`“${sel.text}”\n${src}`); useStore.getState().notify(t("已复制，带出处")); } catch { useStore.getState().notify(t("复制失败")); }
   };
+  const keep = async () => {
+    if (!sel) return;
+    const ep = await episode();
+    if (!ep) { useStore.getState().notify(t("先打开一集，才能记笔记")); return; }
+    const secs = toSeconds(sel.ts);
+    try {
+      await addNote(ep.id, { text: sel.text, source: sel.source, ts: sel.ts, seconds: sel.ts ? secs : undefined });
+      window.dispatchEvent(new CustomEvent("subcast-open-notes"));
+      useStore.getState().notify(t("已记到笔记"));
+      setSel(null);
+      window.getSelection()?.removeAllRanges();
+    } catch (e) { useStore.getState().notify(errorText(e)); }
+  };
   const translate = async () => {
     if (!sel) return;
     setTr("…");
@@ -69,6 +84,7 @@ export function SelectionTools() {
             <button onClick={copy}><Copy size={13} /> {t("复制")}</button>
             <button onClick={translate}><Languages size={13} /> {t("翻译")}</button>
             <button onClick={() => { setPoster({ text: sel.text, ts: sel.ts }); setSel(null); }}><ImageIcon size={13} /> {t("生成海报")}</button>
+            <button onClick={() => void keep()}><NotebookPen size={13} /> {t("记到笔记")}</button>
           </div>
           {tr && <div className="sel-tr">{tr === "…" ? <Loader2 size={13} className="spin" /> : tr}</div>}
         </div>
