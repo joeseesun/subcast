@@ -567,31 +567,43 @@ function WelcomeCard() {
   );
 }
 
+const addInput = (prev: ReadonlySet<string>, input: string) => { const next = new Set(prev); next.add(input); return next; };
+const dropInput = (prev: ReadonlySet<string>, input: string) => { const next = new Set(prev); next.delete(input); return next; };
+
 export function DiscoverView() {
   const { shows, reloadShows, notify, go } = useStore(useShallow((s) => ({ shows: s.shows, reloadShows: s.reloadShows, notify: s.notify, go: s.go })));
-  const [adding, setAdding] = useState<string | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
+  // The check appears before the feed finishes. Subscribing waited on the whole feed, which is the slow part.
+  const [optimistic, setOptimistic] = useState<ReadonlySet<string>>(new Set());
+  const inflight = useRef(new Set<string>());
   const promo = usePromo();
   const bannerHidden = useStore((s) => s.settings.homeBannerHidden);
   const showBanner = promo && !bannerHidden;
-  const subscribed = (p: Pick) => isSubscribed(p, shows);
+  const subscribed = (p: Pick) => optimistic.has(p.input) || isSubscribed(p, shows);
   const home = PICKS.find((p) => p.input === HOME_SHOW_FEED);
   const add = async (input: string, title: string) => {
-    setAdding(input);
+    if (inflight.current.has(input)) return;
+    inflight.current.add(input);
+    setOptimistic((prev) => addInput(prev, input));
     try {
       await api.addSubscription(input);
       await reloadShows();
+      const pick = PICKS.find((p) => p.input === input);
+      if (!pick || isSubscribed(pick, useStore.getState().shows)) setOptimistic((prev) => dropInput(prev, input));
       notify(t("已订阅「{name}」", { name: title }));
-    } catch (err) { notify(errorText(err)); } finally { setAdding(null); }
+    } catch (err) {
+      setOptimistic((prev) => dropInput(prev, input));
+      notify(errorText(err));
+    } finally { inflight.current.delete(input); }
   };
   const subBtn = (input: string, title: string, done: boolean) => done
     ? <span className="tile-done" title={t("已订阅")}><Check size={16} /></span>
-    : <button className="tile-add" title={t("订阅")} onClick={(e) => { e.stopPropagation(); void add(input, title); }} disabled={adding != null}>{adding === input ? <Loader2 size={16} className="spin" /> : <Plus size={18} />}</button>;
+    : <button className="tile-add" title={t("订阅")} onClick={(e) => { e.stopPropagation(); void add(input, title); }}><Plus size={18} /></button>;
   return (
     <div className="page">
       <h1 className="page-title">{t("发现")}</h1>
       <p className="muted page-sub">{t("精选海外与中文好节目，订阅后字幕和中文翻译开箱即用。想找别的节目，用上方搜索框。")}</p>
-      {showBanner && home && !topics.length && <HomeShowBanner onHide={() => { void useStore.getState().saveSettings({ homeBannerHidden: true }); notify(t("好的，不再显示。可以在设置 › 通用里重新打开")); }} subscribed={subscribed(home)} busy={adding === home.input} onSubscribe={() => void add(home.input, pickName(home))} onOpen={() => go({ kind: "channel", input: home.input })} />}
+      {showBanner && home && !topics.length && <HomeShowBanner onHide={() => { void useStore.getState().saveSettings({ homeBannerHidden: true }); notify(t("好的，不再显示。可以在设置 › 通用里重新打开")); }} subscribed={subscribed(home)} busy={false} onSubscribe={() => void add(home.input, pickName(home))} onOpen={() => go({ kind: "channel", input: home.input })} />}
       <TopicChips topics={topics} setTopics={setTopics} />
       <div className="tile-grid">
         {visible(topics).filter((p) => !(showBanner && p === home && !topics.length)).map((p) => <PickCard key={p.id} p={p} subscribed={subscribed(p)} onOpen={() => go({ kind: "channel", input: p.input })} action={subBtn(p.input, pickName(p), subscribed(p))} />)}

@@ -81,6 +81,10 @@ pub async fn resolve(input: &str) -> Result<Source> {
     if url.contains("xiaoyuzhoufm.com/episode/") {
         return Ok(Source::XiaoyuzhouEpisode(url));
     }
+    // A direct feed is downloaded again by fetch_show. Probing it here made Discover's + wait twice.
+    if is_direct_feed(&url) {
+        return Ok(Source::Feed(url));
+    }
     // Anything else: a feed, or a page that links one.
     let body = net::get_text(&url).await?;
     let head = body.trim_start().get(..800).unwrap_or(body.trim_start());
@@ -297,6 +301,18 @@ pub async fn xiaoyuzhou_episode(url: &str) -> Result<Episode> {
     Ok(ep)
 }
 
+/// True when `url` is the feed itself (RSS/Atom), not an HTML page that merely links one.
+/// YouTube `@handle` pages are not feeds: those still need the channel page to find the id.
+pub fn is_direct_feed(url: &str) -> bool {
+    let u = url.trim().to_ascii_lowercase();
+    let rest = u.split_once("://").map(|(_, r)| r).unwrap_or(&u);
+    let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let path = path.split(['?', '#']).next().unwrap_or(path);
+    host.starts_with("feeds.") || host.starts_with("rss.")
+        || path.ends_with(".xml") || path.ends_with(".rss")
+        || path.split('/').any(|s| s == "rss" || s == "feed" || s == "atom")
+}
+
 pub async fn fetch_show(feed_url: &str, kind: &str) -> Result<(Show, Vec<Episode>)> {
     if kind == "xiaoyuzhou" {
         return xiaoyuzhou_show(feed_url).await;
@@ -356,6 +372,15 @@ mod tests {
         assert_eq!(e[0].duration, Some(3723.0));
         assert_eq!(e[0].transcript_url.as_deref(), Some("https://x/1.vtt"));
         assert!(e[0].published.is_some());
+    }
+    #[test]
+    fn direct_feeds_skip_the_probe() {
+        assert!(is_direct_feed("https://feeds.simplecast.com/JGE3yC0V"));
+        assert!(is_direct_feed("https://rss.libsyn.com/shows/61840/destinations/240976.xml"));
+        assert!(is_direct_feed("https://anchor.fm/s/f7cac464/podcast/rss"));
+        assert!(is_direct_feed("https://api.substack.com/feed/podcast/10845.rss"));
+        assert!(!is_direct_feed("https://www.youtube.com/@ycombinator"));
+        assert!(!is_direct_feed("https://podcasts.apple.com/us/podcast/example/id123"));
     }
     #[test]
     fn video_ids() {
