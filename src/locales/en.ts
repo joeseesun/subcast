@@ -81,6 +81,8 @@ const dict: Record<string, string> = {
   "按 ⌘L 搜索": "Press ⌘L to search",
   "没有找到，换个关键词试试": "Nothing found. Try different keywords",
   "已订阅": "Subscribed",
+  "再点一次，取消订阅": "Click again to unsubscribe",
+  "已取消订阅「{name}」": "Unsubscribed from \"{name}\"",
   "正在准备": "Preparing",
   "正在生成字幕": "Generating subtitles",
   "关闭": "Close",

@@ -584,9 +584,20 @@ export function DiscoverView() {
       notify(t("已订阅「{name}」", { name: title }));
     } catch (err) { notify(errorText(err)); } finally { setAdding(null); }
   };
-  const subBtn = (input: string, title: string, done: boolean) => done
-    ? <span className="tile-done" title={t("已订阅")}><Check size={16} /></span>
-    : <button className="tile-add" title={t("订阅")} onClick={(e) => { e.stopPropagation(); void add(input, title); }} disabled={adding != null}>{adding === input ? <Loader2 size={16} className="spin" /> : <Plus size={18} />}</button>;
+  const drop = async (p: Pick) => {
+    const sub = subscribedShow(p, useStore.getState().shows);
+    if (!sub) return;
+    if (!(await ask({ title: t("取消订阅「{name}」？", { name: pickName(p) }), message: t("已生成的字幕、精读和收听进度会保留。"), ok: t("取消订阅"), danger: true }))) return;
+    setAdding(p.input);
+    try {
+      await api.removeShow(sub.id);
+      await reloadShows();
+      notify(t("已取消订阅「{name}」", { name: pickName(p) }));
+    } catch (err) { notify(errorText(err)); } finally { setAdding(null); }
+  };
+  const subBtn = (p: Pick, done: boolean) => done
+    ? <button type="button" className="tile-done" title={t("再点一次，取消订阅")} aria-label={t("再点一次，取消订阅")} onClick={(e) => { e.stopPropagation(); void drop(p); }} disabled={adding != null}><Check size={16} className="when-idle" /><X size={16} className="when-hover" /></button>
+    : <button className="tile-add" title={t("订阅")} onClick={(e) => { e.stopPropagation(); void add(p.input, pickName(p)); }} disabled={adding != null}>{adding === p.input ? <Loader2 size={16} className="spin" /> : <Plus size={18} />}</button>;
   return (
     <div className="page">
       <h1 className="page-title">{t("发现")}</h1>
@@ -594,7 +605,7 @@ export function DiscoverView() {
       {showBanner && home && !topics.length && <HomeShowBanner onHide={() => { void useStore.getState().saveSettings({ homeBannerHidden: true }); notify(t("好的，不再显示。可以在设置 › 通用里重新打开")); }} subscribed={subscribed(home)} busy={adding === home.input} onSubscribe={() => void add(home.input, pickName(home))} onOpen={() => go({ kind: "channel", input: home.input })} />}
       <TopicChips topics={topics} setTopics={setTopics} />
       <div className="tile-grid">
-        {visible(topics).filter((p) => !(showBanner && p === home && !topics.length)).map((p) => <PickCard key={p.id} p={p} subscribed={subscribed(p)} onOpen={() => go({ kind: "channel", input: p.input })} action={subBtn(p.input, pickName(p), subscribed(p))} />)}
+        {visible(topics).filter((p) => !(showBanner && p === home && !topics.length)).map((p) => <PickCard key={p.id} p={p} subscribed={subscribed(p)} onOpen={() => go({ kind: "channel", input: p.input })} action={subBtn(p, subscribed(p))} />)}
       </div>
     </div>
   );

@@ -521,6 +521,11 @@ svg { transition: transform .16s var(--ease); }
 .tile-add { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; display: grid; place-items: center; cursor: pointer; opacity: 0; transform: translateY(4px); transition: opacity .16s var(--ease), transform .16s var(--ease); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
 .pick-tile:hover .tile-add, .tile-add:focus-visible { opacity: 1; transform: none; }
 .tile-done { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,.9); color: var(--accent-text); display: grid; place-items: center; }
+button.tile-done { border: 0; padding: 0; cursor: pointer; }
+button.tile-done .when-hover { display: none; }
+button.tile-done:hover, button.tile-done:focus-visible { color: var(--danger); }
+button.tile-done:hover .when-idle, button.tile-done:focus-visible .when-idle { display: none; }
+button.tile-done:hover .when-hover, button.tile-done:focus-visible .when-hover { display: block; }
 .chips.left .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .onboard-bar { left: 220px; }
 .mini { left: 236px; }
