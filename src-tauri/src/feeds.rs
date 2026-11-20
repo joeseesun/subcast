@@ -371,7 +371,41 @@ async fn search_youtube_channels(term: &str) -> Result<Vec<SearchResult>> {
     let data: serde_json::Value = serde_json::from_str(&json[1])?;
     let mut found = Vec::new();
     collect_channels(&data, &mut found, MAX);
+    // Covers are yt3.ggpht.com URLs. The webview loads them itself and draws a broken-image question mark when
+    // that request fails; this client is the one that already reached YouTube (including via the app proxy).
+    // Fetch the avatar here and hand the webview a data URL. A failed fetch keeps the original URL.
+    let inlined = futures_util::future::join_all(found.iter().map(|r| {
+        let url = r.cover.clone();
+        async move { match url { Some(u) => inline_youtube_avatar(&u).await, None => None } }
+    })).await;
+    for (row, data) in found.iter_mut().zip(inlined) {
+        if data.is_some() { row.cover = data; }
+    }
     Ok(found)
+}
+
+const AVATAR_HOSTS: &[&str] = &["https://yt3.ggpht.com/", "https://yt3.googleusercontent.com/"];
+const AVATAR_MAX: usize = 256 * 1024;
+
+fn is_youtube_avatar_host(url: &str) -> bool {
+    AVATAR_HOSTS.iter().any(|host| url.starts_with(host))
+}
+
+fn image_data_url(mime: &str, bytes: &[u8]) -> Option<String> {
+    let mime = mime.split(';').next().unwrap_or("").trim();
+    if !mime.starts_with("image/") || mime.contains(['"', ' ', '\n']) { return None; }
+    if bytes.is_empty() || bytes.len() > AVATAR_MAX { return None; }
+    use base64::Engine;
+    Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
+/// Channel avatars only, and only from YouTube's own image hosts, so a bad search payload cannot make us fetch elsewhere.
+async fn inline_youtube_avatar(url: &str) -> Option<String> {
+    if !is_youtube_avatar_host(url) { return None; }
+    let res = net::get(url).await.ok()?;
+    let mime = res.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("image/jpeg").to_string();
+    let bytes = res.bytes().await.ok()?;
+    image_data_url(&mime, &bytes)
 }
 
 fn collect_channels(v: &serde_json::Value, out: &mut Vec<SearchResult>, max: usize) {
@@ -462,6 +496,19 @@ mod tests {
         assert_eq!(out[0].author, "@罗永浩的十字路口");
         assert_eq!(out[0].cover.as_deref(), Some("https://yt3.ggpht.com/a=s176"));
         assert_eq!(out[1].author, "YouTube");
+    }
+    #[test]
+    fn avatar_data_url_stays_on_youtube_hosts() {
+        assert!(is_youtube_avatar_host("https://yt3.ggpht.com/abc=s176-c-k-c0x00ffffff-no-rj-mo"));
+        assert!(is_youtube_avatar_host("https://yt3.googleusercontent.com/abc"));
+        assert!(!is_youtube_avatar_host("https://yt3.ggpht.com.evil.test/abc"));
+        assert!(!is_youtube_avatar_host("http://yt3.ggpht.com/abc"));
+        assert!(!is_youtube_avatar_host("https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg"));
+        let url = image_data_url("image/jpeg; charset=binary", &[0xff, 0xd8, 1, 2]).unwrap();
+        assert!(url.starts_with("data:image/jpeg;base64,"));
+        assert!(image_data_url("text/html", &[1, 2, 3]).is_none());
+        assert!(image_data_url("image/jpeg", &[]).is_none());
+        assert!(image_data_url("image/jpeg", &vec![1u8; AVATAR_MAX + 1]).is_none());
     }
     /// Network: a Chinese name finds the YouTube channel first, and a 小宇宙-hosted show resolves to its 小宇宙 page.
     #[tokio::test]

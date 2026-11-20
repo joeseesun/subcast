@@ -98,11 +98,19 @@ const PLACEHOLDERS = [tk("粘贴 YouTube / 小宇宙 / 播客链接，或搜索�
 const placeholder = PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)];
 export const looksLikeLink = (t: string) => /^(https?:\/\/|@)|youtube\.com|youtu\.be|xiaoyuzhoufm\.com|feed\.xyzfm\.space|podcasts\.apple\.com|\.(xml|rss)\b/i.test(t.trim());
 
+/** A failed remote cover must become the letter tile, not WebKit's broken-image question mark. */
+function SearchCover({ title, cover }: { title: string; cover?: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [cover]);
+  if (!cover || failed) return <div className="cover-fallback">{title.slice(0, 1)}</div>;
+  return <img src={cover} alt="" onError={() => setFailed(true)} />;
+}
+
 /** One search hit: the row opens the show's page (latest episodes, subscribe there); the button subscribes at once. */
 export function SearchRow({ r, done, adding, onOpen, onSubscribe, active, onHover }: { r: SearchResult; done: boolean; adding: string | null; onOpen: () => void; onSubscribe: () => void; active?: boolean; onHover?: () => void }) {
   return (
     <div className={`drop-row clickable ${active ? "is-active" : ""}`} role="button" tabIndex={0} onMouseEnter={onHover} onMouseDown={(e) => e.preventDefault()} onClick={onOpen} onKeyDown={(e) => { if (e.key === "Enter") onOpen(); }}>
-      {r.cover ? <img src={r.cover} alt="" /> : <div className="cover-fallback">{r.title.slice(0, 1)}</div>}
+      <SearchCover title={r.title} cover={r.cover} />
       <div className="drop-meta">
         <BiTitle text={r.title} className="ep-name" subClassName="clamp1" />
         <p className="meta-line clamp1">{r.source === "youtube" && <span className="src-badge">YouTube</span>}{r.source === "youtube" && r.author === "YouTube" ? null : r.author}</p>

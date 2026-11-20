@@ -67,6 +67,14 @@ Listen to overseas podcasts and YouTube with bilingual subtitles, deep reads and
 
 <p align="center"><img src="docs/assets/poster.webp" alt="金句海报" width="320" /></p>
 
+## 搜索 YouTube 频道
+
+搜索结果里的频道头像以前经常加载失败，显示成问号。现在头像在本机取好再显示。
+
+| 以前 | 现在 |
+|---|---|
+| <img src="docs/assets/search-avatar-before.webp" alt="搜索结果里 YouTube 头像是问号" /> | <img src="docs/assets/search-avatar-after.webp" alt="搜索结果里显示 YouTube 频道头像" /> |
+
 ## 用自己的模型
 
 AI 导读、问答和可选的字幕翻译，用你自己的模型服务。推荐 DeepSeek，国内直连，一般一期一角钱左右。也预置了硅基流动、Kimi、Claude、OpenAI、OpenRouter、Gemini，以及 Ollama、LM Studio 等本机模型；任何 OpenAI 兼容接口都可以。Key 只存在系统钥匙串里（macOS Keychain / Windows 凭据管理器 / Linux Secret Service）。
@@ -152,6 +160,12 @@ macOS builds are signed and notarized. Windows builds are not code-signed yet: o
 - **Shared subtitles**: episodes someone already transcribed open with subtitles ready. Only the text is shared, never audio; uploading can be turned off.
 - **AI guide and Q&A** with your own model (DeepSeek, Claude, OpenAI, Kimi, OpenRouter, Gemini, Ollama, LM Studio or any OpenAI-compatible API). Answers cite timestamps you can click.
 - **Quote posters**, saved episodes with play-all, offline downloads, and four interface languages.
+
+YouTube channel pictures in search used to fail and show a question mark. They are now fetched on the computer and shown directly.
+
+| Before | After |
+|---|---|
+| <img src="docs/assets/search-avatar-before.webp" alt="YouTube search results with broken channel pictures" /> | <img src="docs/assets/search-avatar-after.webp" alt="YouTube search results with channel pictures" /> |
 
 ## Privacy
 
