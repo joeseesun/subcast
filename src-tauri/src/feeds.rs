@@ -335,6 +335,57 @@ pub async fn fetch_show(feed_url: &str, kind: &str) -> Result<(Show, Vec<Episode
     parse_feed(&xml, feed_url)
 }
 
+/// Channel id carried by a YouTube uploads feed. The show cover in that feed is a video thumbnail, not the avatar.
+pub fn youtube_channel_id_from_feed(feed_url: &str) -> Option<String> {
+    if let Some(c) = re(r"[?&]channel_id=(UC[A-Za-z0-9_-]{22})").captures(feed_url) {
+        return Some(c[1].to_string());
+    }
+    // UULF is the long-form playlist; UU is every upload. Either way the 22 characters after the prefix are the channel id without "UC".
+    if let Some(c) = re(r"[?&]playlist_id=UU(?:LF|LL|SH)?([A-Za-z0-9_-]{22})").captures(feed_url) {
+        return Some(format!("UC{}", &c[1]));
+    }
+    None
+}
+
+fn og_image(html: &str) -> Option<String> {
+    let raw = re(r#"<meta property="og:image" content="([^"]+)""#).captures(html)?.get(1)?.as_str();
+    let url = raw.replace("&amp;", "&");
+    // The page asks for a large copy. The sidebar only needs a small one, and the smaller file inlines faster.
+    let url = re(r"=s\d+").replace(&url, "=s176").into_owned();
+    is_youtube_avatar_host(&url).then_some(url)
+}
+
+const AVATAR_HOSTS: &[&str] = &["https://yt3.ggpht.com/", "https://yt3.googleusercontent.com/"];
+const AVATAR_MAX: usize = 256 * 1024;
+
+fn is_youtube_avatar_host(url: &str) -> bool {
+    AVATAR_HOSTS.iter().any(|host| url.starts_with(host))
+}
+
+fn image_data_url(mime: &str, bytes: &[u8]) -> Option<String> {
+    let mime = mime.split(';').next().unwrap_or("").trim();
+    if !mime.starts_with("image/") || mime.contains(['"', ' ', '\n']) { return None; }
+    if bytes.is_empty() || bytes.len() > AVATAR_MAX { return None; }
+    use base64::Engine;
+    Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
+async fn inline_youtube_avatar(url: &str) -> Option<String> {
+    if !is_youtube_avatar_host(url) { return None; }
+    let res = net::get(url).await.ok()?;
+    let mime = res.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("image/jpeg").to_string();
+    let bytes = res.bytes().await.ok()?;
+    image_data_url(&mime, &bytes)
+}
+
+/// The channel's own picture, as a data URL the webview can show. None keeps the video thumbnail already on the show.
+pub async fn youtube_channel_avatar(feed_url: &str) -> Option<String> {
+    let id = youtube_channel_id_from_feed(feed_url)?;
+    let html = net::get_text(&format!("https://www.youtube.com/channel/{id}")).await.ok()?;
+    let url = og_image(&html)?;
+    inline_youtube_avatar(&url).await
+}
+
 // ---- search -------------------------------------------------------------------------------------
 
 #[derive(Serialize)]
@@ -462,6 +513,24 @@ mod tests {
         assert_eq!(out[0].author, "@罗永浩的十字路口");
         assert_eq!(out[0].cover.as_deref(), Some("https://yt3.ggpht.com/a=s176"));
         assert_eq!(out[1].author, "YouTube");
+    }
+    #[test]
+    fn channel_id_comes_from_the_uploads_feed() {
+        assert_eq!(
+            youtube_channel_id_from_feed("https://www.youtube.com/feeds/videos.xml?playlist_id=UULFFDMMIHbtRdrVhHlGXVzApA").as_deref(),
+            Some("UCFDMMIHbtRdrVhHlGXVzApA")
+        );
+        assert_eq!(
+            youtube_channel_id_from_feed("https://www.youtube.com/feeds/videos.xml?channel_id=UCFDMMIHbtRdrVhHlGXVzApA").as_deref(),
+            Some("UCFDMMIHbtRdrVhHlGXVzApA")
+        );
+        assert!(youtube_channel_id_from_feed("https://example.com/feed.xml").is_none());
+    }
+    #[test]
+    fn channel_page_og_image_is_a_small_avatar() {
+        let html = r#"<html><meta property="og:image" content="https://yt3.googleusercontent.com/abc=s900-c-k-c0x00ffffff-no-rj"></html>"#;
+        assert_eq!(og_image(html).as_deref(), Some("https://yt3.googleusercontent.com/abc=s176-c-k-c0x00ffffff-no-rj"));
+        assert!(og_image(r#"<meta property="og:image" content="https://evil.example/a.jpg">"#).is_none());
     }
     /// Network: a Chinese name finds the YouTube channel first, and a 小宇宙-hosted show resolves to its 小宇宙 page.
     #[tokio::test]

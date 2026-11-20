@@ -44,6 +44,8 @@ pub struct VideoInfo {
     pub tracks: Vec<Track>,
     /// The spoken language, when YouTube marks one audio track as the original (videos with dubbed audio).
     pub original_language: Option<String>,
+    /// `UC…`, when the player response includes one. Used to subscribe from a video opened on its own.
+    pub channel_id: Option<String>,
 }
 
 fn original_language(player: &Value) -> Option<String> {
@@ -60,6 +62,12 @@ fn original_language(player: &Value) -> Option<String> {
 }
 
 fn base(lang: &str) -> String { lang.split(['-', '_']).next().unwrap_or(lang).to_lowercase() }
+
+/// A YouTube channel id (`UC` plus 22 characters). Anything else is not a channel we can subscribe to.
+pub fn channel_id_of(details: &Value) -> Option<String> {
+    let id = details["channelId"].as_str()?;
+    (id.starts_with("UC") && id.len() == 24).then(|| id.to_string())
+}
 
 fn tracks_of(player: &Value) -> Vec<Track> {
     player["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"]
@@ -96,6 +104,7 @@ pub async fn video_info(video_id: &str) -> Result<VideoInfo> {
             description: d["shortDescription"].as_str().unwrap_or("").to_string(),
             tracks: tracks_of(&player),
             original_language: original_language(&player),
+            channel_id: channel_id_of(d),
         };
         if !info.tracks.is_empty() { return Ok(info); }
         if fallback.is_none() && !info.title.is_empty() { fallback = Some(info); }
@@ -170,7 +179,14 @@ pub async fn fetch_track(track: &Track) -> Result<Vec<Segment>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     fn t(l: &str, auto: bool) -> Track { Track { base_url: String::new(), language: l.into(), auto } }
+    #[test]
+    fn channel_id_is_a_youtube_channel() {
+        assert_eq!(channel_id_of(&json!({"channelId": "UCFDMMIHbtRdrVhHlGXVzApA"})).as_deref(), Some("UCFDMMIHbtRdrVhHlGXVzApA"));
+        assert!(channel_id_of(&json!({"channelId": "not-a-channel"})).is_none());
+        assert!(channel_id_of(&json!({})).is_none());
+    }
     #[test]
     fn dubbed_video_picks_original() {
         let tracks = vec![t("ar", true), t("en", true), t("en-US", false), t("de", true)];

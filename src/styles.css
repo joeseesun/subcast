@@ -1344,6 +1344,7 @@ body.tape-seek .seek::-webkit-slider-thumb { border-radius: 3px; width: 12px; he
 .cover-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .cover-play > img, .cover-play-btn { transition: none; } }
 .round-btn.fav-btn.on { color: var(--accent); }
+.round-btn.sub-btn.on { color: var(--accent); }
 .round-btn.watch-btn.on { color: var(--accent-text); background: var(--accent-soft); }
 .module-head-actions { display: inline-flex; align-items: center; gap: 10px; }
 

@@ -116,6 +116,7 @@ export const api = {
   markShowWatched: (showId: string) => invoke<number>("mark_show_watched", { showId }),
   searchShow: (showId: string, query: string) => invoke<ShowHit[]>("search_show", { showId, query }),
   searchPodcasts: (term: string, country?: string) => invoke<SearchResult[]>("search_podcasts", { term, country }),
+  youtubeChannelFeed: (videoId: string) => invoke<string>("youtube_channel_feed", { videoId }),
   loadTranscript: (episodeId: string) => invoke<Transcript | null>("load_transcript", { episodeId }),
   fetchOfficialTranscript: (episodeId: string) => invoke<Transcript | null>("fetch_official_transcript", { episodeId }),
   transcribe: (episodeId: string, model: string, language: string, cloud?: CloudAsr) => invoke<Transcript>("transcribe", { episodeId, model, language, cloud: cloud ?? null }),

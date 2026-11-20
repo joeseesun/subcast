@@ -63,6 +63,8 @@ const dict: Record<string, string> = {
   "继续收听": "Continue listening",
   "发现": "Discover",
   "订阅": "Subscribe",
+  "订阅这个节目": "Subscribe to this show",
+  "找不到这个节目的订阅源": "Couldn't find a feed for this show",
   "添加节目": "Add show",
   "还没有订阅": "No subscriptions yet",
   "乔木精读": "Qiaomu Deep Reads",
