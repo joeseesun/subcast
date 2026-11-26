@@ -62,7 +62,7 @@ if [ "$SKIP_MAC" = 0 ]; then
     rustup target add "$TARGET" >/dev/null
     echo "==> building $TARGET"
     # Line tables in a separate dSYM: the shipped binary stays stripped, and crash reports can be symbolicated
-    # later (`atos -o <dSYM>/Contents/Resources/DWARF/subcast -arch arm64 -l <load address> <addresses>`).
+    # later (`atos -o <dSYM>/Contents/Resources/DWARF/subcast-* -arch arm64 -l <load address> <addresses>`).
     # Env vars, not Cargo.toml: profiles can't be per-target, and CI's Windows/Linux builds don't need it.
     export CARGO_PROFILE_RELEASE_DEBUG=line-tables-only CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed
     APPLE_SIGNING_IDENTITY="$IDENTITY" npm run tauri build -- --target "$TARGET" --bundles app

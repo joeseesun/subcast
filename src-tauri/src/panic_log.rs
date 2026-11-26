@@ -38,3 +38,20 @@ pub fn install(dir: PathBuf, version: String) {
         default(info);
     }));
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn panic_lands_in_the_log_with_its_location() {
+        let dir = std::env::temp_dir().join(format!("subcast-panic-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        super::install(dir.clone(), "9.9.9".into());
+        let line = line!() + 1;
+        let _ = std::panic::catch_unwind(|| panic!("boom {}", 42));
+        let log = std::fs::read_to_string(dir.join("panic.log")).unwrap();
+        assert!(log.contains("v9.9.9"), "{log}");
+        assert!(log.contains("boom 42"), "{log}");
+        assert!(log.contains(&format!("panic_log.rs:{line}:")), "{log}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

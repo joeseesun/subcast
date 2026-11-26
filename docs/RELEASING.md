@@ -79,7 +79,7 @@ Keys and credentials (never in the repo or in prompts): updater key `~/.tauri/su
 ## Reading a crash
 
 - Every Rust panic goes to `panic.log` in the app log folder (macOS: `~/Library/Logs/ai.qiaomu.subcast/`; `src-tauri/src/panic_log.rs`). Each line has the time, version, thread, message and `file:line:col`. Start there.
-- macOS crash reports are in `~/Library/Logs/DiagnosticReports/subcast-*.ips`. Match the binary's UUID (`usedImages`) to a dSYM with `dwarfdump --uuid`, then: `atos -o release/dsym/<version>/aarch64/subcast.dSYM/Contents/Resources/DWARF/subcast -arch arm64 -l <load address> <frame addresses>`. The load address is the `base` of the `subcast` image in the report.
+- macOS crash reports are in `~/Library/Logs/DiagnosticReports/subcast-*.ips`. Match the binary's UUID (`usedImages`) to a dSYM with `dwarfdump --uuid`, then: `atos -o release/dsym/<version>/aarch64/subcast.dSYM/Contents/Resources/DWARF/subcast-* -arch arm64 -l <load address> <frame addresses>`. The load address is the `base` of the `subcast` image in the report.
 - Releases up to 0.3.8 have no dSYM.
 - Never set `panic = "abort"` in the release profile: wry's `objc2::exception::catch` needs unwinding (see `Cargo.toml`).
 
