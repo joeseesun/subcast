@@ -3,6 +3,7 @@ mod appupdate;
 mod ota;
 mod ytlogin;
 mod clipath;
+mod panic_log;
 
 pub use subcast_core::net;
 use serde::Serialize;
@@ -1094,6 +1095,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            if let Ok(dir) = app.path().app_log_dir() {
+                panic_log::install(dir, app.package_info().version.to_string());
+            }
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             ytlogin::init(app.handle());
