@@ -663,7 +663,7 @@ pub fn smooth_track(samples: &[(f64, Option<f64>)], duration: f64) -> Vec<(f64, 
     let filled: Vec<(f64, f64)> = samples.iter().map(|&(t, x)| { if let Some(v) = x { last = v; } (t, last) }).collect();
     let med: Vec<(f64, f64)> = (0..filled.len()).map(|i| {
         let mut w = [filled[i.saturating_sub(1)].1, filled[i].1, filled[(i + 1).min(filled.len() - 1)].1];
-        w.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        w.sort_by(f64::total_cmp);
         (filled[i].0, w[1])
     }).collect();
     let mut points = vec![(0.0, med[0].1)];
