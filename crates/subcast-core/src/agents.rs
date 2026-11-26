@@ -446,6 +446,8 @@ struct Rpc {
     events: Mutex<mpsc::UnboundedReceiver<Value>>,
     dead: Arc<AtomicBool>,
     stderr: Arc<std::sync::Mutex<String>>,
+    /// Set once the child's stderr has closed, so everything it wrote before exiting is in `stderr`.
+    stderr_done: Arc<AtomicBool>,
 }
 
 impl Rpc {
@@ -460,6 +462,7 @@ impl Rpc {
         let (tx, rx) = mpsc::unbounded_channel();
         let dead = Arc::new(AtomicBool::new(false));
         let err_tail = Arc::new(std::sync::Mutex::new(String::new()));
+        let err_done = Arc::new(AtomicBool::new(false));
         {
             let (waiting, dead) = (waiting.clone(), dead.clone());
             tokio::spawn(async move {
@@ -477,7 +480,7 @@ impl Rpc {
             });
         }
         {
-            let tail = err_tail.clone();
+            let (tail, done) = (err_tail.clone(), err_done.clone());
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
@@ -485,12 +488,22 @@ impl Rpc {
                     t.push_str(&line); t.push('\n');
                     if t.len() > 4000 { let cut = t.len() - 2000; *t = t[cut..].to_string(); }
                 }
+                done.store(true, Ordering::Relaxed);
             });
         }
-        Ok(Rpc { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), next: AtomicU64::new(1), waiting, events: Mutex::new(rx), dead, stderr: err_tail })
+        Ok(Rpc { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), next: AtomicU64::new(1), waiting, events: Mutex::new(rx), dead, stderr: err_tail, stderr_done: err_done })
     }
 
     fn alive(&self) -> bool { !self.dead.load(Ordering::Relaxed) }
+
+    /// Everything the child wrote to stderr, once it has exited (waiting a moment for the last lines); None while
+    /// it still runs.
+    async fn stderr_after_exit(&self) -> Option<String> {
+        if self.alive() { return None; }
+        let t = Instant::now();
+        while !self.stderr_done.load(Ordering::Relaxed) && t.elapsed() < Duration::from_secs(2) { tokio::time::sleep(Duration::from_millis(50)).await; }
+        Some(self.stderr.lock().unwrap().clone())
+    }
 
     fn last_error(&self) -> String { self.stderr.lock().unwrap().lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").chars().take(200).collect() }
 
@@ -708,8 +721,66 @@ fn acp_args(kind: Kind) -> &'static [&'static str] {
         // skills or customisations.
         // --include-default-customizations=false and --disable-telemetry too, where this agy has them (agy_flags).
         Kind::Antigravity => &["acp", "--agent", "subcast"],
-        Kind::Gemini => &["--acp"], Kind::Qwen => &["--acp"], Kind::Kimi => &["acp"], Kind::Opencode => &["acp"], _ => &[]
+        Kind::Kimi => &["acp"], Kind::Opencode => &["acp"], _ => &[]
     }
+}
+
+/// Gemini CLI has taken `--acp` since 0.34 and `--experimental-acp` from 0.1.13 (still accepted, deprecated);
+/// Qwen Code, its fork, followed it. Older versions have neither and exit with yargs' "Unknown argument: acp".
+const ACP_FLAGS: [&str; 2] = ["--acp", "--experimental-acp"];
+
+/// The flag each executable accepted, so later starts try it first and don't spend a process on the other.
+static ACP_FLAG: once_cell::sync::Lazy<std::sync::Mutex<HashMap<PathBuf, &'static str>>> = once_cell::sync::Lazy::new(Default::default);
+
+fn uses_acp_flag(kind: Kind) -> bool { matches!(kind, Kind::Gemini | Kind::Qwen) }
+
+/// The flags to try, the one that worked last time first.
+fn acp_flag_order(known: Option<&'static str>) -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = known.into_iter().collect();
+    v.extend(ACP_FLAGS.iter().copied().filter(|f| Some(*f) != known));
+    v
+}
+
+/// What yargs prints when a version doesn't know the flag: "Unknown argument: acp",
+/// "Unknown arguments: experimental-acp, experimentalAcp".
+fn is_unknown_acp_arg(stderr: &str) -> bool {
+    stderr.lines().any(|l| { let l = l.to_lowercase(); l.contains("unknown argument") && l.contains("acp") })
+}
+
+fn upgrade_command(kind: Kind) -> &'static str {
+    if kind == Kind::Qwen { "npm i -g @qwen-code/qwen-code" } else { "npm i -g @google/gemini-cli" }
+}
+
+/// Said instead of the raw yargs error when neither flag is known.
+fn too_old(kind: Kind, path: &Path) -> anyhow::Error {
+    let (name, at, cmd) = (display(kind), path.display(), upgrade_command(kind));
+    anyhow!("{name} 版本太旧，不支持 SubCast 需要的 ACP 模式（{at}）。请在终端运行 {cmd} 升级，再回到 SubCast 点「重新检测」")
+}
+
+async fn initialize(rpc: &Rpc) -> Result<()> {
+    // No file system and no terminal for the agent.
+    rpc.request("initialize", json!({ "protocolVersion": 1, "clientCapabilities": { "fs": { "readTextFile": false, "writeTextFile": false }, "terminal": false },
+        "clientInfo": { "name": "subcast", "version": env!("CARGO_PKG_VERSION") } }), 60).await?;
+    Ok(())
+}
+
+/// Starts Gemini CLI or Qwen Code with the ACP flag its version knows.
+async fn spawn_with_acp_flag(kind: Kind, path: &Path) -> Result<Rpc> {
+    let known = ACP_FLAG.lock().unwrap().get(path).copied();
+    for flag in acp_flag_order(known) {
+        let rpc = Rpc::spawn(path, &[flag]).await?;
+        match initialize(&rpc).await {
+            Ok(()) => { ACP_FLAG.lock().unwrap().insert(path.to_path_buf(), flag); return Ok(rpc); }
+            Err(e) => {
+                let rejected = rpc.stderr_after_exit().await.is_some_and(|s| is_unknown_acp_arg(&s));
+                rpc.close().await;
+                if !rejected { return Err(e); }
+            }
+        }
+    }
+    // Not remembered: after upgrading, 重新检测 tries again.
+    ACP_FLAG.lock().unwrap().remove(path);
+    Err(too_old(kind, path))
 }
 
 impl Acp {
@@ -721,10 +792,11 @@ impl Acp {
             std::fs::create_dir_all(&dir)?;
             std::fs::write(dir.join("agent.md"), "---\nname: subcast\ndescription: Answers in text only\nmainAgent: true\nsubagent: false\ntools: []\ninheritMcp: false\ninheritCustomizations: false\nexcludeDefaultComponents: true\n---\nAnswer in text only. You have no tools.\n")?;
         }
-        let rpc = Rpc::spawn(path, &args).await?;
-        // No file system and no terminal for the agent.
-        rpc.request("initialize", json!({ "protocolVersion": 1, "clientCapabilities": { "fs": { "readTextFile": false, "writeTextFile": false }, "terminal": false },
-            "clientInfo": { "name": "subcast", "version": env!("CARGO_PKG_VERSION") } }), 60).await?;
+        let rpc = if uses_acp_flag(kind) { spawn_with_acp_flag(kind, path).await? } else {
+            let rpc = Rpc::spawn(path, &args).await?;
+            initialize(&rpc).await?;
+            rpc
+        };
         let acp = Acp { kind, rpc, spare: std::sync::Mutex::new(None) };
         acp.prepare_session().await;
         Ok(acp)
@@ -946,5 +1018,46 @@ mod agy_tests {
         // Other agents keep their own wording.
         let g = friendly(Kind::Kimi, anyhow!("flag provided but not defined: -x")).to_string();
         assert!(!g.contains("agy"));
+    }
+}
+
+#[cfg(test)]
+mod acp_flag_tests {
+    use super::*;
+    #[test]
+    fn tries_the_remembered_flag_first() {
+        assert_eq!(acp_flag_order(None), ["--acp", "--experimental-acp"]);
+        assert_eq!(acp_flag_order(Some("--experimental-acp")), ["--experimental-acp", "--acp"]);
+        assert_eq!(acp_flag_order(Some("--acp")), ["--acp", "--experimental-acp"]);
+        assert!(uses_acp_flag(Kind::Gemini) && uses_acp_flag(Kind::Qwen) && !uses_acp_flag(Kind::Kimi));
+        assert!(acp_args(Kind::Gemini).is_empty());
+    }
+
+    #[test]
+    fn recognises_yargs_rejecting_the_flag() {
+        // What Gemini CLI 0.1.9 prints for each flag.
+        assert!(is_unknown_acp_arg("Usage: gemini [options]\n\nUnknown argument: acp\n"));
+        assert!(is_unknown_acp_arg("Unknown arguments: experimental-acp, experimentalAcp"));
+        assert!(!is_unknown_acp_arg("Unknown argument: disable-telemetry"));
+        assert!(!is_unknown_acp_arg("Error authenticating: acp session failed"));
+        assert!(!is_unknown_acp_arg(""));
+    }
+
+    #[test]
+    fn too_old_names_the_install_and_the_upgrade() {
+        let m = too_old(Kind::Gemini, Path::new("/opt/homebrew/bin/gemini")).to_string();
+        assert!(m.starts_with("Gemini CLI 版本太旧"), "{m}");
+        assert!(m.contains("/opt/homebrew/bin/gemini") && m.contains("npm i -g @google/gemini-cli"), "{m}");
+        assert!(!m.contains("Unknown argument"));
+        assert!(too_old(Kind::Qwen, Path::new("qwen")).to_string().contains("@qwen-code/qwen-code"));
+    }
+
+    /// GEMINI_PATH=/path/to/gemini : starts it the way SubCast does and prints the outcome and the flag it took.
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
+    async fn start_given_gemini() {
+        let path = PathBuf::from(std::env::var("GEMINI_PATH").expect("GEMINI_PATH"));
+        let r = probe(Kind::Gemini, &path).await;
+        println!("probe: {r:?}\nflag: {:?}", ACP_FLAG.lock().unwrap().get(&path));
     }
 }
