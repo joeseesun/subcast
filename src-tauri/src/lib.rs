@@ -121,12 +121,12 @@ async fn refresh_all(state: State<'_, AppState>) -> Res<ops::Refreshed> {
 
 #[tauri::command(async)]
 fn list_shows(state: State<'_, AppState>) -> Res<Vec<Show>> {
-    db::list_shows(&state.ctx.db.lock().unwrap()).map_err(e)
+    db::list_shows(&state.ctx.db.lock()).map_err(e)
 }
 
 #[tauri::command(async)]
 fn list_episodes(state: State<'_, AppState>, show_id: Option<String>, limit: Option<i64>) -> Res<Vec<Episode>> {
-    db::list_episodes(&state.ctx.db.lock().unwrap(), show_id.as_deref(), limit.unwrap_or(300)).map_err(e)
+    db::list_episodes(&state.ctx.db.lock(), show_id.as_deref(), limit.unwrap_or(300)).map_err(e)
 }
 
 #[tauri::command]
@@ -136,32 +136,32 @@ async fn search_show(state: State<'_, AppState>, show_id: String, query: String)
 
 #[tauri::command(async)]
 fn recent_episodes(state: State<'_, AppState>) -> Res<Vec<Episode>> {
-    db::recent_episodes(&state.ctx.db.lock().unwrap(), 60).map_err(e)
+    db::recent_episodes(&state.ctx.db.lock(), 60).map_err(e)
 }
 
 #[tauri::command(async)]
 fn get_episode(state: State<'_, AppState>, id: String) -> Res<Option<Episode>> {
-    db::get_episode(&state.ctx.db.lock().unwrap(), &id).map_err(e)
+    db::get_episode(&state.ctx.db.lock(), &id).map_err(e)
 }
 
 #[tauri::command(async)]
 fn remove_show(state: State<'_, AppState>, id: String, keep_episode_id: Option<String>) -> Res<()> {
-    db::delete_show(&state.ctx.db.lock().unwrap(), &id, keep_episode_id.as_deref()).map_err(e)
+    db::delete_show(&state.ctx.db.lock(), &id, keep_episode_id.as_deref()).map_err(e)
 }
 
 #[tauri::command(async)]
 fn set_progress(state: State<'_, AppState>, id: String, seconds: f64) -> Res<()> {
-    db::set_progress(&state.ctx.db.lock().unwrap(), &id, seconds).map_err(e)
+    db::set_progress(&state.ctx.db.lock(), &id, seconds).map_err(e)
 }
 
 #[tauri::command]
 fn set_watched(state: State<'_, AppState>, id: String, watched: Option<String>) -> Res<()> {
-    db::set_watched(&state.ctx.db.lock().unwrap(), &id, watched.as_deref()).map_err(e)
+    db::set_watched(&state.ctx.db.lock(), &id, watched.as_deref()).map_err(e)
 }
 
 #[tauri::command]
 fn mark_show_watched(state: State<'_, AppState>, show_id: String) -> Res<usize> {
-    db::mark_show_watched(&state.ctx.db.lock().unwrap(), &show_id).map_err(e)
+    db::mark_show_watched(&state.ctx.db.lock(), &show_id).map_err(e)
 }
 
 #[tauri::command]
@@ -173,7 +173,7 @@ async fn search_podcasts(term: String, country: Option<String>) -> Res<Vec<feeds
 
 #[tauri::command(async)]
 fn load_transcript(state: State<'_, AppState>, episode_id: String) -> Res<Option<Transcript>> {
-    db::get_transcript(&state.ctx.db.lock().unwrap(), &episode_id).map_err(e)
+    db::get_transcript(&state.ctx.db.lock(), &episode_id).map_err(e)
 }
 
 #[tauri::command]
@@ -635,7 +635,7 @@ fn open_mic_settings() {
 
 #[tauri::command]
 fn save_time_map(state: State<'_, AppState>, episode_id: String, map: align::TimeMap) -> Res<()> {
-    db::set_blob(&state.ctx.db.lock().unwrap(), &episode_id, "tmap", &serde_json::to_string(&map).map_err(e)?)
+    db::set_blob(&state.ctx.db.lock(), &episode_id, "tmap", &serde_json::to_string(&map).map_err(e)?)
         .map_err(e)
 }
 
@@ -714,12 +714,12 @@ async fn download_model(app: AppHandle, state: State<'_, AppState>, id: String, 
 
 #[tauri::command(async)]
 fn log_listen(state: State<'_, AppState>, episode_id: String, show_id: String, seconds: f64, translated: bool) -> Res<()> {
-    db::log_listen(&state.ctx.db.lock().unwrap(), &episode_id, &show_id, seconds, translated).map_err(e)
+    db::log_listen(&state.ctx.db.lock(), &episode_id, &show_id, seconds, translated).map_err(e)
 }
 
 #[tauri::command(async)]
 fn listening_stats(state: State<'_, AppState>, since: String) -> Res<Vec<Value>> {
-    db::listens_since(&state.ctx.db.lock().unwrap(), &since).map_err(e)
+    db::listens_since(&state.ctx.db.lock(), &since).map_err(e)
 }
 
 #[tauri::command]
@@ -741,12 +741,12 @@ fn delete_model(state: State<'_, AppState>, id: String) -> Res<()> {
 
 #[tauri::command(async)]
 fn get_blob(state: State<'_, AppState>, episode_id: String, kind: String) -> Res<Option<String>> {
-    db::get_blob(&state.ctx.db.lock().unwrap(), &episode_id, &kind).map_err(e)
+    db::get_blob(&state.ctx.db.lock(), &episode_id, &kind).map_err(e)
 }
 
 #[tauri::command(async)]
 fn set_blob(state: State<'_, AppState>, episode_id: String, kind: String, data: String) -> Res<()> {
-    db::set_blob(&state.ctx.db.lock().unwrap(), &episode_id, &kind, &data).map_err(e)
+    db::set_blob(&state.ctx.db.lock(), &episode_id, &kind, &data).map_err(e)
 }
 
 #[tauri::command(async)]
@@ -856,7 +856,7 @@ async fn translate_texts(state: State<'_, AppState>, texts: Vec<String>, target:
 
 #[tauri::command]
 fn db_data_version(state: State<'_, AppState>) -> Res<i64> {
-    db::data_version(&state.ctx.db.lock().unwrap()).map_err(e)
+    db::data_version(&state.ctx.db.lock()).map_err(e)
 }
 
 #[derive(Serialize)]
@@ -1110,9 +1110,9 @@ pub fn run() {
             // `tauri dev` loads the interface from the dev server (already http://localhost); every built app serves
             // its own. Debug builds skip interface updates: they show the interface they were built with.
             let (ui, ui_port): (ota::Active, u16) = if tauri::is_dev() {
-                (Arc::new(std::sync::RwLock::new(None)), 0)
+                (Arc::new(parking_lot::RwLock::new(None)), 0)
             } else {
-                let active = Arc::new(std::sync::RwLock::new(if cfg!(debug_assertions) { None } else { ota::boot(&data) }));
+                let active = Arc::new(parking_lot::RwLock::new(if cfg!(debug_assertions) { None } else { ota::boot(&data) }));
                 let port = serve_ui(app.handle(), active.clone());
                 (active, port)
             };

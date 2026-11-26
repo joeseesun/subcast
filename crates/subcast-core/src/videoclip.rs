@@ -147,12 +147,12 @@ pub fn find_ffmpeg(data: &Path) -> Option<PathBuf> {
     dirs.into_iter().map(|d| d.join(&name)).find(|p| p.is_file())
 }
 
-static VT_CACHE: std::sync::Mutex<Option<(PathBuf, bool)>> = std::sync::Mutex::new(None);
+static VT_CACHE: parking_lot::Mutex<Option<(PathBuf, bool)>> = parking_lot::Mutex::new(None);
 
 /// Checks whether the FFmpeg binary supports macOS hardware H.264 encoding (`h264_videotoolbox`).
 pub fn has_videotoolbox(bin: &Path) -> bool {
     if !cfg!(target_os = "macos") { return false; }
-    if let Some((cached, ok)) = VT_CACHE.lock().unwrap().as_ref() {
+    if let Some((cached, ok)) = VT_CACHE.lock().as_ref() {
         if cached == bin { return *ok; }
     }
     let mut cmd = std::process::Command::new(bin);
@@ -160,7 +160,7 @@ pub fn has_videotoolbox(bin: &Path) -> bool {
     let ok = cmd.output().map(|o| {
         o.status.success() && String::from_utf8_lossy(&o.stdout).contains("h264_videotoolbox")
     }).unwrap_or(false);
-    *VT_CACHE.lock().unwrap() = Some((bin.to_path_buf(), ok));
+    *VT_CACHE.lock() = Some((bin.to_path_buf(), ok));
     ok
 }
 
@@ -1169,8 +1169,8 @@ pub async fn prepare_segment(
     let dest = dir.join(format!("{start_ms}-{end_ms}.mp4"));
     // One fetch per file at a time: a background prefetch and the user's own click on the same clip share it.
     let lock = {
-        static LOCKS: once_cell::sync::Lazy<std::sync::Mutex<std::collections::HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>> = once_cell::sync::Lazy::new(Default::default);
-        LOCKS.lock().unwrap().entry(dest.clone()).or_default().clone()
+        static LOCKS: once_cell::sync::Lazy<parking_lot::Mutex<std::collections::HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>> = once_cell::sync::Lazy::new(Default::default);
+        LOCKS.lock().entry(dest.clone()).or_default().clone()
     };
     let _held = lock.lock().await;
 
