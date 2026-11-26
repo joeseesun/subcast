@@ -1622,10 +1622,12 @@ body.tape-seek .seek::-webkit-slider-thumb { border-radius: 3px; width: 12px; he
 .video-dock { position: fixed; z-index: 15; border-radius: 12px; overflow: hidden; }
 .video-dock .video { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
 .video-dock.floating { right: 24px; bottom: 96px; width: 340px; height: 191px; z-index: 45; box-shadow: 0 12px 40px rgba(0,0,0,.28); }
-.video-dock.floating .subtitle-overlay p { font-size: 12px !important; }
-.video-dock.floating .sub-zh + .sub-orig { display: none; }
+/* The small window's own subtitle size; full screen from the small window (theater-host) uses the normal sizes. */
+.video-dock.floating:not(.theater-host) .subtitle-overlay p { font-size: 12px !important; }
+.video-dock.floating:not(.theater-host) .sub-zh + .sub-orig { display: none; }
 .video-float-bar { position: absolute; top: 6px; right: 6px; z-index: 7; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
-.video-dock.floating:hover .video-float-bar { opacity: 1; }
+.video-dock.floating:not(.theater-host):hover .video-float-bar { opacity: 1; }
+.video-dock.theater-host .video-float-bar { display: none; }
 .video-float-bar .icon-btn { background: rgba(0,0,0,.55); color: #fff; }
 .video-dock.theater-host { clip-path: none !important; z-index: 400; }
 /* Audio episodes: current line, and the next one waiting below it. Every line has a fixed box (two lines for
@@ -2204,7 +2206,7 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
 .sub-tune { position: absolute; top: 10px; right: 10px; z-index: 7; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; opacity: 0; transition: opacity .2s var(--ease); }
 .video:hover .sub-tune, .sub-tune.open, .sub-tune:focus-within { opacity: 1; }
 .video.theater.idle .sub-tune:not(.open) { opacity: 0; pointer-events: none; }
-.video-dock.floating .sub-tune { display: none; }
+.video-dock.floating:not(.theater-host) .sub-tune { display: none; }
 .sub-tune-btn { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; background: rgba(0,0,0,.55); color: #fff; cursor: pointer; backdrop-filter: blur(6px); }
 .sub-tune-btn:hover, .sub-tune.open .sub-tune-btn { background: rgba(0,0,0,.75); }
 .sub-tune-pop { width: 280px; max-height: calc(100cqh - 62px); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); box-shadow: 0 10px 28px rgba(0,0,0,.24); font-size: 13px; cursor: default; }
