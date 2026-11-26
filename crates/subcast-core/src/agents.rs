@@ -201,10 +201,10 @@ pub async fn models(kind: Kind, path: &Path) -> Result<Vec<AgentModel>> {
             Ok(parse_codex_models(&r?))
         }
         _ => {
-            let conn = Acp::start(kind, path).await?;
+            let conn = Acp::start(kind, path).await.map_err(|e| friendly(kind, e))?;
             let r = conn.rpc.request("session/new", json!({ "cwd": work_dir()?.to_string_lossy(), "mcpServers": [] }), 60).await;
             conn.close().await;
-            Ok(parse_acp_models(&r?))
+            Ok(parse_acp_models(&r.map_err(|e| friendly(kind, e))?))
         }
     }
 }
@@ -252,7 +252,7 @@ pub struct Request<'a> {
 pub async fn complete(kind: Kind, path: &Path, mut req: Request<'_>, cancel: Arc<AtomicBool>, on_delta: impl Fn(&str) + Send) -> Result<String> {
     let reminded;
     if req.json { reminded = format!("{}\n\n(Answer with the JSON only, no Markdown fences, no other text.)", req.user); req.user = &reminded; }
-    let conn = POOL.take(kind, path, req.system, req.model, &cancel).await?;
+    let conn = POOL.take(kind, path, req.system, req.model, &cancel).await.map_err(|e| friendly(kind, e))?;
     let result = conn.ask(&req, cancel, &on_delta).await;
     POOL.give_back(conn, result.is_ok()).await;
     match result {
@@ -265,6 +265,7 @@ pub async fn complete(kind: Kind, path: &Path, mut req: Request<'_>, cancel: Arc
 
 fn friendly(kind: Kind, e: anyhow::Error) -> anyhow::Error {
     let m = e.to_string();
+    if kind == Kind::Antigravity { if let Some(f) = agy_friendly(&m) { return anyhow!(f); } }
     let name = display(kind);
     let l = m.to_lowercase();
     if l.contains("no longer supported") || l.contains("migrate to") {
@@ -273,12 +274,61 @@ fn friendly(kind: Kind, e: anyhow::Error) -> anyhow::Error {
         anyhow!("{name} 的默认模型不可用，请在 SubCast 里为它选一个模型")
     } else if l.contains("not logged in") || l.contains("login") || l.contains("unauthor") || l.contains("auth_required") || l.contains("authentication") {
         anyhow!("{name} 需要登录：在终端运行 {} 完成登录后，回到 SubCast 点「重新检测」", kind.exe())
-    } else if kind == Kind::Antigravity && (l.contains("resource exhausted") || l.contains("429")) {
-        // agy answers some prompts with a "Resource exhausted" that has nothing to do with quota.
-        anyhow!("{name} 暂时拒绝了这次请求（不一定是额度用完），稍后再试：{}", m.chars().take(160).collect::<String>())
     } else if l.contains("rate limit") || l.contains("usage limit") || l.contains("quota") || l.contains("429") || l.contains("limit reached") {
         anyhow!("{name} 的订阅额度暂时用完了（请求太频繁或额度不足）：{}", m.chars().take(160).collect::<String>())
     } else { e }
+}
+
+/// What agy's own error words mean for the listener, in their words (agy's are Google's status lines). Matched as
+/// agy 1.5.x writes them; the wordings are the ones magpie's agy-cli bridge (magpie-community/plugins) has seen.
+fn agy_friendly(m: &str) -> Option<String> {
+    let l = m.to_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| l.contains(w));
+    Some(if has(&[AGY_TOO_OLD, "flag provided but not defined", "unknown command", "unknown flag", "unknown argument"]) {
+        "Antigravity CLI 版本太旧，不支持 SubCast 的调用方式：在终端运行 agy update 升级后，回到 SubCast 点「重新检测」".to_string()
+    } else if has(&["individual quota reached", "third-party quota reached"]) {
+        // "⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 1h18m40s."
+        let third = l.contains("third-party");
+        match agy_reset_in(m) {
+            Some(t) if third => format!("Antigravity CLI 的 Claude / GPT 额度用完了，{t} 后恢复；Gemini 模型的额度是分开算的，可以先在 SubCast 里换成 Gemini 模型"),
+            Some(t) => format!("Antigravity CLI 所用 Google 账号的额度用完了，{t} 后恢复；也可以先在 SubCast 里换一个模型"),
+            None if third => String::from("Antigravity CLI 的 Claude / GPT 额度用完了；Gemini 模型的额度是分开算的，可以先在 SubCast 里换成 Gemini 模型"),
+            None => String::from("Antigravity CLI 所用 Google 账号的额度用完了，稍后再试，或先在 SubCast 里换一个模型"),
+        }
+    } else if has(&["credits balance is too low"]) {
+        "Antigravity CLI 的 AI 点数余额不足，等额度恢复或在 Google 账号里补充后再试".to_string()
+    } else if has(&["violation of terms of service", "service has been disabled"]) {
+        "Google 停用了这个账号的 Antigravity 服务（判定违反服务条款），需要先向 Google 申诉".to_string()
+    } else if has(&["verification required", "validation_required"]) {
+        "Google 要求先验证这个账号：在终端运行 agy，按提示完成验证后再试".to_string()
+    } else if has(&["high traffic", "no capacity available", "code 503"]) {
+        "Google 的服务器正忙，所选模型暂时没有空余算力：过一分钟再试，或在 SubCast 里换一个模型".to_string()
+    } else if has(&["network issue connecting"]) {
+        "Antigravity CLI 连不上 Google 的服务器：检查网络或代理后重试".to_string()
+    } else if has(&["resource_exhausted", "resource has been exhausted", "resource exhausted", "code 429"]) {
+        // agy answers some prompts with a bare 429 that has nothing to do with quota.
+        "Antigravity CLI 暂时拒绝了这次请求（Google 返回 429，不一定是额度用完）：稍后再试，或在 SubCast 里换一个模型".to_string()
+    } else if has(&["agent execution terminated"]) {
+        "Antigravity CLI 回答到一半出错停止了，请重试".to_string()
+    } else { return None })
+}
+
+/// "… Resets in 1h18m40s." → "1h18m40s".
+fn agy_reset_in(m: &str) -> Option<String> {
+    let i = m.to_lowercase().find("resets in ")?;
+    let t: String = m[i + "resets in ".len()..].chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+    (!t.is_empty()).then_some(t)
+}
+
+/// agy ends a turn whose model call failed normally, with the failure as the reply's last line
+/// ("⚠ RESOURCE_EXHAUSTED (code 429): Resource has been exhausted (e.g. check quota)."). That line, if it is one.
+fn agy_error_line(text: &str) -> Option<&str> {
+    const STARTS: [&str; 10] = ["RESOURCE_EXHAUSTED", "PERMISSION_DENIED", "Individual quota reached", "Third-party quota reached",
+        "Verification Required", "Agent execution terminated", "There was a network issue", "Your AI credits balance",
+        "Our servers are experiencing high traffic", "This service has been disabled"];
+    let last = text.lines().rev().find(|l| !l.trim().is_empty())?.trim();
+    let body = last.strip_prefix('⚠')?.trim_start();
+    STARTS.iter().any(|s| body.starts_with(s)).then_some(last)
 }
 
 pub fn display(kind: Kind) -> &'static str {
@@ -607,13 +657,70 @@ impl Codex {
 
 /// `spare`: a session already asked for while the process was idle, so the next question skips the ~2–3 s
 /// session/new (each request still gets its own session, so answers never see each other's text).
-struct Acp { rpc: Rpc, spare: std::sync::Mutex<Option<oneshot::Receiver<Value>>> }
+struct Acp { kind: Kind, rpc: Rpc, spare: std::sync::Mutex<Option<oneshot::Receiver<Value>>> }
+
+/// Marks a start refused because this agy has no `acp` (agy_friendly turns it into an upgrade hint).
+const AGY_TOO_OLD: &str = "agy has no acp server";
+
+/// `agy acp --help` per binary (path, size, modified time), so an update asks again.
+static AGY_HELP: once_cell::sync::Lazy<std::sync::Mutex<HashMap<String, String>>> = once_cell::sync::Lazy::new(Default::default);
+
+async fn agy_acp_help(path: &Path) -> String {
+    let key = match std::fs::metadata(path) {
+        Ok(md) => format!("{}|{}|{:?}", path.display(), md.len(), md.modified().ok()),
+        Err(_) => path.display().to_string(),
+    };
+    if let Some(h) = AGY_HELP.lock().unwrap().get(&key) { return h.clone(); }
+    let help = output(path, &["acp", "--help"], 15).await.unwrap_or_default();
+    // An empty answer (timed out) is asked again next time.
+    if !help.trim().is_empty() { AGY_HELP.lock().unwrap().insert(key, help.clone()); }
+    help
+}
+
+/// The optional flags this agy's `acp` takes. An agy refuses to start on a flag it doesn't know (both came in 1.5.x),
+/// so each is passed only when its help lists it, as magpie's agy bridge does. Err when the help shows no ACP server
+/// at all (an agy from before `acp`); an empty help (it didn't answer) is not known to be old, so it goes ahead.
+fn agy_flags(help: &str) -> Result<Vec<&'static str>> {
+    if !help.trim().is_empty() && !help.contains("--agent") && !help.to_lowercase().contains("agent client protocol") {
+        return Err(anyhow!("{AGY_TOO_OLD}"));
+    }
+    let mut v = Vec::new();
+    if help.contains("--include-default-customizations") { v.push("--include-default-customizations=false"); }
+    if help.contains("--disable-telemetry") || help.contains("--disable_telemetry") { v.push("--disable-telemetry"); }
+    Ok(v)
+}
+
+/// The effort words agy puts after a model family in the ids it lists ("gemini-3.8-flash-medium").
+const EFFORTS: [&str; 6] = ["minimal", "low", "medium", "high", "xhigh", "max"];
+
+/// Whether a session/set_config_option answer shows `id` set to `value`. agy answers a value it doesn't offer (one of
+/// its own listed ids, "gemini-4-neon-high", for the "gemini-4-neon" option) with success and changes nothing, so
+/// only its read-back says. An answer without configOptions is taken at its word.
+fn config_applied(result: &Value, id: &str, value: &str) -> bool {
+    match result["configOptions"].as_array() {
+        Some(opts) => opts.iter().find(|o| o["id"].as_str() == Some(id)).is_some_and(|o| o["currentValue"].as_str() == Some(value)),
+        None => true,
+    }
+}
+
+/// A listed id as the model option's value plus a thinking level ("gemini-3.8-flash-medium" → "gemini-3.8-flash",
+/// "medium"), from the configOptions an answer gave; the longest value that fits.
+fn split_leveled(config_options: &Value, model: &str) -> Option<(String, String)> {
+    let opt = config_options.as_array()?.iter().find(|o| o["id"].as_str() == Some("model") || o["category"].as_str() == Some("model"))?;
+    let values: Vec<String> = opt["options"].as_array()?.iter()
+        .flat_map(|x| x["options"].as_array().cloned().unwrap_or_else(|| vec![x.clone()]))
+        .filter_map(|x| x["value"].as_str().map(str::to_string)).collect();
+    values.into_iter()
+        .filter_map(|v| { let level = model.strip_prefix(v.as_str())?.strip_prefix('-')?; EFFORTS.contains(&level).then(|| (v.clone(), level.to_string())) })
+        .max_by_key(|(v, _)| v.len())
+}
 
 fn acp_args(kind: Kind) -> &'static [&'static str] {
     match kind {
         // Its own agent definition (written into the work folder): no tools, none of the user's MCP servers,
         // skills or customisations.
-        Kind::Antigravity => &["acp", "--agent", "subcast", "--include-default-customizations=false", "--disable-telemetry"],
+        // --include-default-customizations=false and --disable-telemetry too, where this agy has them (agy_flags).
+        Kind::Antigravity => &["acp", "--agent", "subcast"],
         Kind::Kimi => &["acp"], Kind::Opencode => &["acp"], _ => &[]
     }
 }
@@ -678,17 +785,19 @@ async fn spawn_with_acp_flag(kind: Kind, path: &Path) -> Result<Rpc> {
 
 impl Acp {
     async fn start(kind: Kind, path: &Path) -> Result<Acp> {
+        let mut args: Vec<&str> = acp_args(kind).to_vec();
         if kind == Kind::Antigravity {
+            args.extend(agy_flags(&agy_acp_help(path).await)?);
             let dir = work_dir()?.join(".agents/agents/subcast");
             std::fs::create_dir_all(&dir)?;
             std::fs::write(dir.join("agent.md"), "---\nname: subcast\ndescription: Answers in text only\nmainAgent: true\nsubagent: false\ntools: []\ninheritMcp: false\ninheritCustomizations: false\nexcludeDefaultComponents: true\n---\nAnswer in text only. You have no tools.\n")?;
         }
         let rpc = if uses_acp_flag(kind) { spawn_with_acp_flag(kind, path).await? } else {
-            let rpc = Rpc::spawn(path, acp_args(kind)).await?;
+            let rpc = Rpc::spawn(path, &args).await?;
             initialize(&rpc).await?;
             rpc
         };
-        let acp = Acp { rpc, spare: std::sync::Mutex::new(None) };
+        let acp = Acp { kind, rpc, spare: std::sync::Mutex::new(None) };
         acp.prepare_session().await;
         Ok(acp)
     }
@@ -724,9 +833,10 @@ impl Acp {
         // A session per request (cheap in a running agent), so one answer never sees another's text.
         let session = self.session().await?;
         if let Some(m) = req.model.filter(|m| !m.is_empty()) {
-            // Newer agents take the model as a config option; older ones have set_model.
-            if self.rpc.request("session/set_config_option", json!({ "sessionId": session, "configId": "model", "value": m }), 15).await.is_err() {
-                let _ = self.rpc.request("session/set_model", json!({ "sessionId": session, "modelId": m }), 15).await;
+            // A model the agent doesn't take answers with its own default; agy's is a slow high-thinking one, and its
+            // choice is the listener's, so it says so rather than answering on another model.
+            if !self.select_model(&session, m).await && self.kind == Kind::Antigravity {
+                return Err(anyhow!("Antigravity CLI 现在不提供所选的模型「{m}」，请在 SubCast 的设置里重新选一个模型"));
             }
         }
         // ACP has no system prompt: it goes first in the message.
@@ -743,6 +853,8 @@ impl Acp {
                 // Late chunks can still be queued: take what is there.
                 while let Ok(v) = self.rpc.event(0).await { self.on_update(&v, &session, &mut text, on_delta).await; }
                 self.prepare_session().await;
+                // agy's failed model call is an ordinary reply: its last line is the error (friendly() words it).
+                if self.kind == Kind::Antigravity { if let Some(line) = agy_error_line(&text) { return Err(anyhow!("{line}")); } }
                 return Ok(text);
             }
             if cancel.load(Ordering::Relaxed) {
@@ -757,6 +869,20 @@ impl Acp {
             };
             self.on_update(&v, &session, &mut text, on_delta).await;
         }
+    }
+
+    /// Sets the session's model: as a config option (newer agents), else with set_model (older ones; agy also takes
+    /// its listed ids there, level and all), else as agy's config values, the family and then its thinking level.
+    /// Whether it took.
+    async fn select_model(&self, session: &str, m: &str) -> bool {
+        let set = |id: &str, value: &str| self.rpc.request("session/set_config_option", json!({ "sessionId": session, "configId": id, "value": value }), 15);
+        let first = set("model", m).await;
+        if first.as_ref().is_ok_and(|r| config_applied(r, "model", m)) { return true; }
+        if self.rpc.request("session/set_model", json!({ "sessionId": session, "modelId": m }), 15).await.is_ok() { return true; }
+        let Some((family, level)) = first.ok().and_then(|r| split_leveled(&r["configOptions"], m)) else { return false };
+        // The family first: a model change can replace the thinking levels on offer.
+        set("model", &family).await.is_ok_and(|r| config_applied(&r, "model", &family))
+            && set("thought_level", &level).await.is_ok_and(|r| config_applied(&r, "thought_level", &level))
     }
 
     async fn on_update(&self, v: &Value, session: &str, text: &mut String, on_delta: &(impl Fn(&str) + Send)) {
@@ -781,6 +907,7 @@ impl Acp {
 mod live {
     use super::*;
     /// AGENTS=claude,codex,gemini… : asks each a tiny question twice (cold, then warm) and prints the times.
+    /// MODEL=… asks on that model; ASK=… asks that instead.
     #[tokio::test(flavor = "multi_thread")]
     #[ignore]
     async fn ask_each_agent() {
@@ -791,7 +918,9 @@ mod live {
             for round in ["cold", "warm"] {
                 if round == "warm" { tokio::time::sleep(Duration::from_secs(5)).await; } // as between two questions
                 let t0 = Instant::now();
-                let r = complete(f.kind, Path::new(&f.path), Request { system: "Answer with JSON only.", user: r#"Reply exactly {"ok":true}"#, model: None, json: true }, Arc::new(AtomicBool::new(false)), |_| {}).await;
+                let (model, ask) = (std::env::var("MODEL").ok(), std::env::var("ASK").ok());
+                let user = ask.as_deref().unwrap_or(r#"Reply exactly {"ok":true}"#);
+                let r = complete(f.kind, Path::new(&f.path), Request { system: if ask.is_some() { "" } else { "Answer with JSON only." }, user, model: model.as_deref(), json: ask.is_none() }, Arc::new(AtomicBool::new(false)), |_| {}).await;
                 println!("  {round}: {:.1}s -> {:?}", t0.elapsed().as_secs_f64(), r.map(|s| s.chars().take(80).collect::<String>()));
             }
         }
@@ -809,6 +938,86 @@ mod model_list_tests {
         assert_eq!(parse_acp_models(&acp)[0].id, "k3");
         let cfg = json!({ "configOptions": [{ "id": "model", "options": [{ "group": "x", "options": [{ "value": "m1", "name": "M1" }] }, { "value": "m2" }] }] });
         assert_eq!(parse_acp_models(&cfg).iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["m1", "m2"]);
+    }
+}
+
+#[cfg(test)]
+mod agy_tests {
+    use super::*;
+
+    // As agy 1.5.16 answers session/new (shortened).
+    fn options() -> Value {
+        json!([
+            { "id": "model", "category": "model", "type": "select", "currentValue": "gemini-4-neon", "options": [
+                { "value": "gemini-4-neon", "name": "Gemini 4 Neon" }, { "value": "gemini-3.8-flash", "name": "Gemini 3.8 Flash" },
+                { "value": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5" }, { "value": "gpt-oss-120b-medium", "name": "GPT-OSS 120B (Medium)" }] },
+            { "id": "thought_level", "category": "thought_level", "type": "select", "currentValue": "high", "options": [{ "value": "low" }, { "value": "high" }] }
+        ])
+    }
+
+    #[test]
+    fn a_listed_id_agy_ignores_is_not_applied() {
+        // agy answered set_config_option model=gemini-4-neon-high with success and kept gemini-4-neon.
+        let r = json!({ "configOptions": options() });
+        assert!(!config_applied(&r, "model", "gemini-4-neon-high"));
+        assert!(config_applied(&r, "model", "gemini-4-neon"));
+        assert!(config_applied(&r, "thought_level", "high"));
+        // Agents that answer {} are taken at their word.
+        assert!(config_applied(&json!({}), "model", "anything"));
+    }
+
+    #[test]
+    fn listed_ids_split_into_family_and_level() {
+        let o = options();
+        assert_eq!(split_leveled(&o, "gemini-3.8-flash-medium"), Some(("gemini-3.8-flash".into(), "medium".into())));
+        assert_eq!(split_leveled(&o, "claude-sonnet-5-5-low"), Some(("claude-sonnet-5-5".into(), "low".into())));
+        // A value that is itself a model (its "-medium" is part of the name) has nothing to split.
+        assert_eq!(split_leveled(&o, "gpt-oss-120b-medium"), None);
+        assert_eq!(split_leveled(&o, "gemini-9-unknown-high"), None);
+        assert_eq!(split_leveled(&o, "gemini-3.8-flash-turbo"), None);
+    }
+
+    #[test]
+    fn optional_flags_follow_the_help() {
+        let new = "Usage: agy acp [flags]\n\nStart the Agent Client Protocol (ACP) stdio server\n  --agent  Agent\n  --disable-telemetry  If true\n  --include-default-customizations  Include default customizations (default true)\n";
+        assert_eq!(agy_flags(new).unwrap(), ["--include-default-customizations=false", "--disable-telemetry"]);
+        let older = "Usage: agy acp [flags]\n\nStart the Agent Client Protocol (ACP) stdio server\n  --agent  Agent\n";
+        assert!(agy_flags(older).unwrap().is_empty());
+        // No answer: not known to be old.
+        assert!(agy_flags("").unwrap().is_empty());
+        // An agy from before `acp` prints its own usage.
+        let before = "Usage of agy:\n  --model  Model for the current CLI session\n  -p  Short alias for --print\n";
+        let e = agy_flags(before).unwrap_err();
+        assert!(friendly(Kind::Antigravity, e).to_string().contains("agy update"));
+    }
+
+    #[test]
+    fn errors_agy_writes_as_the_reply() {
+        let quota = "Here is part of it.\n\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 1h18m40s.\n";
+        let line = agy_error_line(quota).unwrap();
+        let f = friendly(Kind::Antigravity, anyhow!("{line}")).to_string();
+        assert!(f.contains("1h18m40s") && f.contains("额度用完"), "{f}");
+        let third = friendly(Kind::Antigravity, anyhow!("⚠ Third-party quota reached. Please switch to Gemini models. Resets in 3h22m19s.")).to_string();
+        assert!(third.contains("Claude / GPT") && third.contains("3h22m19s"), "{third}");
+        let r429 = agy_error_line("\n⚠ RESOURCE_EXHAUSTED (code 429): Resource has been exhausted (e.g. check quota).\n").unwrap();
+        assert!(friendly(Kind::Antigravity, anyhow!("{r429}")).to_string().contains("429"));
+        let busy = "⚠ Our servers are experiencing high traffic right now, please try again in a minute. (UNAVAILABLE (code 503): No capacity available for model gemini-3.8-flash-high on the server)";
+        assert!(friendly(Kind::Antigravity, anyhow!("{}", agy_error_line(busy).unwrap())).to_string().contains("服务器正忙"));
+        let banned = "⚠ This service has been disabled in this account for violation of Terms of Service. Please submit an appeal to continue using this product.";
+        assert!(friendly(Kind::Antigravity, anyhow!("{}", agy_error_line(banned).unwrap())).to_string().contains("申诉"));
+        // An answer that merely mentions a warning is an answer.
+        assert_eq!(agy_error_line("{\"ok\":true}"), None);
+        assert_eq!(agy_error_line("⚠ Note: this word has two meanings."), None);
+        assert_eq!(agy_error_line("⚠ RESOURCE_EXHAUSTED came up earlier.\nBut here is the answer."), None);
+    }
+
+    #[test]
+    fn start_failures_of_an_old_agy_say_to_update() {
+        let f = friendly(Kind::Antigravity, anyhow!("本机 AI 意外退出：flag provided but not defined: -disable-telemetry")).to_string();
+        assert!(f.contains("agy update"), "{f}");
+        // Other agents keep their own wording.
+        let g = friendly(Kind::Kimi, anyhow!("flag provided but not defined: -x")).to_string();
+        assert!(!g.contains("agy"));
     }
 }
 
