@@ -736,6 +736,8 @@ const dict: Record<string, string> = {
   "更多服务商（{n}）": "More providers ({n})",
   "用你自己的 API Key，按用量付费给服务商。Key 只存在本机钥匙串。": "Use your own API Key and pay the provider for what you use. Your key is stored only in this Mac's Keychain.",
   "在你电脑上运行的模型服务，不需要 Key。": "Model services running on your computer. No key needed.",
+  "B 站翻译（免费）": "Bilibili Translate (free)",
+  "免费的在线服务，不需要 Key。": "A free online service. No key needed.",
   "可用 ✓ {reply}（{s} 秒）": "Works ✓ {reply} ({s}s)",
   "用你自己的 {plan}，不需要 API Key。用量计入你的订阅额度。": "Uses your own {plan}, no API Key needed. Usage counts toward your subscription limits.",
   "还没有登录。打开「终端」，输入下面的命令并回车，按提示登录，然后回来点「重新检测」。": "Not signed in yet. Open Terminal, enter the command below and press Return, sign in as prompted, then come back and click \"Check again\".",
