@@ -788,7 +788,6 @@ const dict: Record<string, string> = {
   "Google 已不再让个人账号使用 {name}。个人 Google 账号请改用 Antigravity CLI（agy）；{name} 只适用于 API Key 或企业版账号": "Google no longer lets personal accounts use {name}. With a personal Google account, use Antigravity CLI (agy) instead; {name} only works with an API Key or an enterprise account",
   "{name} 的默认模型不可用，请在 SubCast 里为它选一个模型": "The default model for {name} isn't available. Choose a model for it in SubCast",
   "{name} 需要登录：在终端运行 {} 完成登录后，回到 SubCast 点「重新检测」": "{name} needs you to sign in: run {} in Terminal to sign in, then return to SubCast and click \"Check again\"",
-  "{name} 暂时拒绝了这次请求（不一定是额度用完），稍后再试：{}": "{name} temporarily refused this request (not necessarily because of usage limits). Try again later: {}",
   "{name} 的订阅额度暂时用完了（请求太频繁或额度不足）：{}": "{name} has temporarily hit its subscription limit (too many requests or not enough quota): {}",
   "无法启动 {}": "Can't start {}",
   "{method} 超时": "{method} timed out",
@@ -1880,6 +1879,19 @@ const dict: Record<string, string> = {
   "字幕列表": "Subtitle list",
   "右侧栏": "Right sidebar",
   "播放器下方": "Below the player",
+  "Antigravity CLI 版本太旧，不支持 SubCast 的调用方式：在终端运行 agy update 升级后，回到 SubCast 点「重新检测」": "Antigravity CLI is too old for the way SubCast calls it. Run agy update in a terminal, then click “Check again” in SubCast",
+  "Antigravity CLI 的 Claude / GPT 额度用完了，{t} 后恢复；Gemini 模型的额度是分开算的，可以先在 SubCast 里换成 Gemini 模型": "Antigravity CLI has used up its Claude / GPT quota; it resets in {t}. Gemini models have a separate quota, so you can switch to a Gemini model in SubCast for now",
+  "Antigravity CLI 所用 Google 账号的额度用完了，{t} 后恢复；也可以先在 SubCast 里换一个模型": "The Google account Antigravity CLI uses is out of quota; it resets in {t}. You can also switch to another model in SubCast for now",
+  "Antigravity CLI 的 Claude / GPT 额度用完了；Gemini 模型的额度是分开算的，可以先在 SubCast 里换成 Gemini 模型": "Antigravity CLI has used up its Claude / GPT quota. Gemini models have a separate quota, so you can switch to a Gemini model in SubCast for now",
+  "Antigravity CLI 所用 Google 账号的额度用完了，稍后再试，或先在 SubCast 里换一个模型": "The Google account Antigravity CLI uses is out of quota. Try again later, or switch to another model in SubCast for now",
+  "Antigravity CLI 的 AI 点数余额不足，等额度恢复或在 Google 账号里补充后再试": "Antigravity CLI doesn't have enough AI credits left. Try again once they reset or after topping up your Google account",
+  "Google 停用了这个账号的 Antigravity 服务（判定违反服务条款），需要先向 Google 申诉": "Google has disabled Antigravity for this account (for a Terms of Service violation). You need to appeal to Google first",
+  "Google 要求先验证这个账号：在终端运行 agy，按提示完成验证后再试": "Google wants this account verified first: run agy in a terminal, follow its steps, then try again",
+  "Google 的服务器正忙，所选模型暂时没有空余算力：过一分钟再试，或在 SubCast 里换一个模型": "Google's servers are busy and the chosen model has no capacity right now. Try again in a minute, or switch to another model in SubCast",
+  "Antigravity CLI 连不上 Google 的服务器：检查网络或代理后重试": "Antigravity CLI can't reach Google's servers. Check your network or proxy and try again",
+  "Antigravity CLI 暂时拒绝了这次请求（Google 返回 429，不一定是额度用完）：稍后再试，或在 SubCast 里换一个模型": "Antigravity CLI turned this request down for now (Google answered 429, which doesn't always mean the quota is used up). Try again later, or switch to another model in SubCast",
+  "Antigravity CLI 回答到一半出错停止了，请重试": "Antigravity CLI stopped partway through its answer because of an error. Please try again",
+  "Antigravity CLI 现在不提供所选的模型「{m}」，请在 SubCast 的设置里重新选一个模型": "Antigravity CLI doesn't offer the chosen model “{m}” right now. Pick another model in SubCast's settings",
 };
 
 export default dict;

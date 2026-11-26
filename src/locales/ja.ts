@@ -788,7 +788,6 @@ const dict: Record<string, string> = {
   "Google 已不再让个人账号使用 {name}。个人 Google 账号请改用 Antigravity CLI（agy）；{name} 只适用于 API Key 或企业版账号": "Google は個人アカウントでの {name} の利用を終了しました。個人の Google アカウントでは Antigravity CLI（agy）を使ってください。{name} は API Key またはエンタープライズアカウントでのみ使えます",
   "{name} 的默认模型不可用，请在 SubCast 里为它选一个模型": "{name} のデフォルトモデルは使えません。SubCast でモデルを選んでください",
   "{name} 需要登录：在终端运行 {} 完成登录后，回到 SubCast 点「重新检测」": "{name} にログインが必要です：ターミナルで {} を実行してログインしたら、SubCast に戻って「再検出」をクリックしてください",
-  "{name} 暂时拒绝了这次请求（不一定是额度用完），稍后再试：{}": "{name} が一時的にこのリクエストを拒否しました（上限到達とは限りません）。しばらくしてから再試行してください：{}",
   "{name} 的订阅额度暂时用完了（请求太频繁或额度不足）：{}": "{name} のサブスクリプション上限に一時的に達しました（リクエストが多すぎるか、残量が不足しています）：{}",
   "无法启动 {}": "{} を起動できません",
   "{method} 超时": "{method} がタイムアウトしました",
@@ -1880,6 +1879,19 @@ const dict: Record<string, string> = {
   "字幕列表": "字幕リスト",
   "右侧栏": "右サイドバー",
   "播放器下方": "プレーヤーの下",
+  "Antigravity CLI 版本太旧，不支持 SubCast 的调用方式：在终端运行 agy update 升级后，回到 SubCast 点「重新检测」": "Antigravity CLI が古すぎて、SubCast の呼び出し方式に対応していません。ターミナルで agy update を実行してアップデートし、SubCast で「再検出」をクリックしてください",
+  "Antigravity CLI 的 Claude / GPT 额度用完了，{t} 后恢复；Gemini 模型的额度是分开算的，可以先在 SubCast 里换成 Gemini 模型": "Antigravity CLI の Claude / GPT の利用枠を使い切りました。{t} 後に回復します。Gemini モデルの枠は別なので、ひとまず SubCast で Gemini モデルに切り替えられます",
+  "Antigravity CLI 所用 Google 账号的额度用完了，{t} 后恢复；也可以先在 SubCast 里换一个模型": "Antigravity CLI が使う Google アカウントの利用枠を使い切りました。{t} 後に回復します。ひとまず SubCast で別のモデルに切り替えることもできます",
+  "Antigravity CLI 的 Claude / GPT 额度用完了；Gemini 模型的额度是分开算的，可以先在 SubCast 里换成 Gemini 模型": "Antigravity CLI の Claude / GPT の利用枠を使い切りました。Gemini モデルの枠は別なので、ひとまず SubCast で Gemini モデルに切り替えられます",
+  "Antigravity CLI 所用 Google 账号的额度用完了，稍后再试，或先在 SubCast 里换一个模型": "Antigravity CLI が使う Google アカウントの利用枠を使い切りました。しばらくしてから再試行するか、SubCast で別のモデルに切り替えてください",
+  "Antigravity CLI 的 AI 点数余额不足，等额度恢复或在 Google 账号里补充后再试": "Antigravity CLI の AI クレジット残高が足りません。回復を待つか、Google アカウントで追加してから再試行してください",
+  "Google 停用了这个账号的 Antigravity 服务（判定违反服务条款），需要先向 Google 申诉": "Google がこのアカウントの Antigravity を停止しました（利用規約違反と判定）。先に Google に異議申し立てをする必要があります",
+  "Google 要求先验证这个账号：在终端运行 agy，按提示完成验证后再试": "Google がこのアカウントの確認を求めています。ターミナルで agy を実行し、案内に従って確認してから再試行してください",
+  "Google 的服务器正忙，所选模型暂时没有空余算力：过一分钟再试，或在 SubCast 里换一个模型": "Google のサーバーが混雑していて、選んだモデルに今は空きがありません。1 分ほどしてから再試行するか、SubCast で別のモデルに切り替えてください",
+  "Antigravity CLI 连不上 Google 的服务器：检查网络或代理后重试": "Antigravity CLI が Google のサーバーに接続できません。ネットワークやプロキシを確認してから再試行してください",
+  "Antigravity CLI 暂时拒绝了这次请求（Google 返回 429，不一定是额度用完）：稍后再试，或在 SubCast 里换一个模型": "Antigravity CLI がこのリクエストを一時的に拒否しました（Google が 429 を返しましたが、利用枠切れとは限りません）。しばらくしてから再試行するか、SubCast で別のモデルに切り替えてください",
+  "Antigravity CLI 回答到一半出错停止了，请重试": "Antigravity CLI が回答の途中でエラーにより停止しました。もう一度お試しください",
+  "Antigravity CLI 现在不提供所选的模型「{m}」，请在 SubCast 的设置里重新选一个模型": "Antigravity CLI は選んだモデル「{m}」を現在提供していません。SubCast の設定でモデルを選び直してください",
 };
 
 export default dict;
