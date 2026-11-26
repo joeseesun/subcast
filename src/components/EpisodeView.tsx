@@ -576,7 +576,7 @@ function EpisodeBody({ ep, tab, setTab, startAudio }: { ep: Episode; tab: Tab; s
       <div className={`ep-body ${panelOpen ? "" : "panel-collapsed"}`} style={{ "--panel-w": `${panelOpen ? panel : 0}px` } as React.CSSProperties}>
         <div className="ep-leftcol">
         <TopBar />
-        <section className="ep-left" ref={leftRef}>
+        <section className={`ep-left ${below ? "transcript-below" : ""}`} ref={leftRef}>
           <div className="ep-title-block">
             <div className="ep-title">
               <p className="meta-line">

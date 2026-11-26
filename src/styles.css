@@ -625,11 +625,15 @@ body.resizing iframe, body.resizing video { pointer-events: none; }
 .mini { left: calc(var(--sidebar-w) + 16px); }
 .onboard-bar { left: var(--sidebar-w); }
 /* The player keeps 16:9 and never pushes its controls below the fold; wide columns center it. */
-.ep-left > .video, .ep-left > .video-slot, .ep-left > .audio-stage { width: min(100%, calc((100vh - 330px) * 16 / 9)); align-self: center; }
-.ep-left > .controls-slot, .ep-left > .controls-dock, .ep-left > .yt-strip { width: min(100%, max(560px, calc((100vh - 330px) * 16 / 9))); align-self: center; }
+/* --player-h is the most height the player may take. With 字幕 under it, the player gives up room so the list (and its
+   followed line) stays on screen: the list fills what is left of the column, never less than 240px. */
+.ep-left { --player-h: calc(100vh - 330px); }
+.ep-left.transcript-below { --player-h: calc(100vh - 330px - clamp(240px, 30vh, 380px)); }
+.ep-left > .video, .ep-left > .video-slot, .ep-left > .audio-stage { width: min(100%, calc(var(--player-h) * 16 / 9)); align-self: center; }
+.ep-left > .controls-slot, .ep-left > .controls-dock, .ep-left > .yt-strip { width: min(100%, max(560px, calc(var(--player-h) * 16 / 9))); align-self: center; }
 /* 字幕 under the player (Settings › 字幕 › 字幕列表): its own scrolling box, as wide as the controls. */
-.ep-left > .ep-transcript { width: min(100%, max(560px, calc((100vh - 330px) * 16 / 9))); align-self: center; height: clamp(360px, 62vh, 760px); display: flex; flex-direction: column; min-height: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; container-type: inline-size; }
-.ep-left > .ep-title-block, .ep-left > .notes { width: min(100%, max(560px, calc((100vh - 330px) * 16 / 9))); align-self: center; }
+.ep-left > .ep-transcript { width: min(100%, max(560px, calc(var(--player-h) * 16 / 9))); align-self: center; flex: 1 0 0; min-height: 240px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; container-type: inline-size; }
+.ep-left > .ep-title-block, .ep-left > .notes { width: min(100%, max(560px, calc(var(--player-h) * 16 / 9))); align-self: center; }
 .ep-left:has(.menu) { position: relative; z-index: 35; }
 .topbar { position: relative; z-index: 40; }
 
@@ -846,7 +850,7 @@ body.resizing iframe, body.resizing video { pointer-events: none; }
 .guide-card .notes-head .muted { flex: 1; }
 .guide-body { padding: 4px 16px 16px; }
 .guide-body .panel-empty { padding: 16px 0; }
-.ep-left > .guide-card { width: min(100%, max(560px, calc((100vh - 330px) * 16 / 9))); align-self: center; }
+.ep-left > .guide-card { width: min(100%, max(560px, calc(var(--player-h) * 16 / 9))); align-self: center; }
 
 /* ===================== selection toolbar + poster ===================== */
 .sel-bar { position: fixed; z-index: 60; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; gap: 6px; animation: fade-in .12s var(--ease); }
