@@ -793,6 +793,7 @@ const dict: Record<string, string> = {
   "无法启动 {}": "Can't start {}",
   "{method} 超时": "{method} timed out",
   "本机 AI 意外退出：{}": "Local AI quit unexpectedly: {}",
+  "{name} 版本太旧，不支持 SubCast 需要的 ACP 模式（{at}）。请在终端运行 {cmd} 升级，再回到 SubCast 点「重新检测」": "{name} is too old for the ACP mode SubCast needs ({at}). Run {cmd} in Terminal to update it, then return to SubCast and click \"Check again\"",
   "本机 AI 长时间没有回应": "Local AI hasn't responded for a long time",
   "本机 AI 超过 5 分钟没有答完": "Local AI didn't finish answering within 5 minutes",
   "长时间没有回应": "No response for a long time",
