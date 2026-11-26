@@ -466,7 +466,11 @@ pub fn ytdlp_command(ytdlp: &Path) -> tokio::process::Command {
     // A dead connection fails in seconds instead of hanging the player on "正在获取视频地址".
     cmd.args(["--socket-timeout", "15"]);
     #[cfg(windows)]
-    { cmd.creation_flags(0x08000000); }
+    {
+        cmd.creation_flags(0x08000000);
+        cmd.args(["--encoding", "utf-8"]);
+        cmd.env("PYTHONUTF8", "1").env("PYTHONIOENCODING", "utf-8");
+    }
     cmd.kill_on_drop(true);
     cmd
 }
@@ -585,6 +589,23 @@ async fn read_ytdlp_stderr_from<R: tokio::io::AsyncRead + Unpin>(stream: R) -> S
     picker.finish()
 }
 
+/// Reads yt-dlp `--newline` stdout line-by-line as raw bytes so non-UTF-8 paths/titles never stop progress updates.
+async fn read_ytdlp_progress_from<R: tokio::io::AsyncRead + Unpin>(
+    stream: R,
+    tx: tokio::sync::mpsc::UnboundedSender<f64>,
+) {
+    let re = regex::Regex::new(r"\[download\]\s+([\d.]+)%").unwrap();
+    let mut reader = BufReader::new(stream);
+    let mut buf = Vec::new();
+    while matches!(reader.read_until(b'\n', &mut buf).await, Ok(n) if n > 0) {
+        let line = String::from_utf8_lossy(&buf);
+        if let Some(v) = re.captures(&line).and_then(|c| c[1].parse::<f64>().ok()) {
+            let _ = tx.send(v / 100.0);
+        }
+        buf.clear();
+    }
+}
+
 /// Spawns a background task to read yt-dlp stderr while keeping the most relevant error line.
 pub fn spawn_ytdlp_stderr_tail(stderr: Option<tokio::process::ChildStderr>) -> tokio::task::JoinHandle<String> {
     tokio::spawn(async move {
@@ -654,11 +675,8 @@ async fn youtube_video_with(ytdlp: &Path, ffmpeg: Option<&Path>, video_id: &str,
     let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<f64>();
     let reader = tokio::spawn(async move {
-        let Some(s) = stdout else { return };
-        let re = regex::Regex::new(r"\[download\]\s+([\d.]+)%").unwrap();
-        let mut lines = BufReader::new(s).lines();
-        while let Ok(Some(l)) = lines.next_line().await {
-            if let Some(v) = re.captures(&l).and_then(|c| c[1].parse::<f64>().ok()) { let _ = tx.send(v / 100.0); }
+        if let Some(s) = stdout {
+            read_ytdlp_progress_from(s, tx).await;
         }
     });
     let tail = spawn_ytdlp_stderr_tail(stderr);
@@ -1300,5 +1318,22 @@ mod ytdlp_stderr_tests {
         let picked = read_ytdlp_stderr_from(std::io::Cursor::new(raw)).await;
         assert!(picked.starts_with("ERROR: [youtube] X90Z02hojbc:"), "got {picked}");
         assert!(bot_check(&picked), "bot_check should match: {picked}");
+    }
+
+    #[tokio::test]
+    async fn streaming_progress_reader_survives_non_utf8_bytes() {
+        // Destination path containing GBK bytes (e.g. Windows Chinese user folder) followed by progress lines.
+        let mut raw = b"[download] Destination: C:\\Users\\".to_vec();
+        raw.extend_from_slice(&[0xD6, 0xD0, 0xCE, 0xC4]);
+        raw.extend_from_slice(b"\\video.mp4\r\n[download]  42.5% of 10.00MiB at 2.00MiB/s\r\n[download] 100% of 10.00MiB\r\n");
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        read_ytdlp_progress_from(std::io::Cursor::new(raw), tx).await;
+
+        let mut values = Vec::new();
+        while let Ok(v) = rx.try_recv() {
+            values.push(v);
+        }
+        assert_eq!(values, vec![0.425, 1.0]);
     }
 }
