@@ -15,7 +15,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/downloads/*", "$APPDATA/clips/*", "$APPDATA/tts-cache/*", "$APPDATA/work/clips/**"]
+        "scope": ["$APPDATA/downloads/*", "$APPDATA/audio-cache/*", "$APPDATA/clips/*", "$APPDATA/tts-cache/*", "$APPDATA/work/clips/**"]
       }
     }
   },
