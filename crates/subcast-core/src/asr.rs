@@ -541,6 +541,60 @@ fn browser_locked(msg: &str) -> bool {
 
 fn bot_check(msg: &str) -> bool { let m = msg.to_lowercase(); m.contains("confirm you") && m.contains("bot") || m.contains("sign in to confirm") }
 
+#[derive(Default)]
+struct StderrPicker {
+    last_error: Option<String>,
+    last_line: String,
+}
+
+impl StderrPicker {
+    fn push(&mut self, line: &str) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if trimmed.starts_with("ERROR:") {
+            self.last_error = Some(trimmed.to_string());
+        }
+        self.last_line = trimmed.to_string();
+    }
+
+    fn finish(self) -> String {
+        self.last_error.unwrap_or(self.last_line)
+    }
+}
+
+/// Picks the most useful error line from buffered yt-dlp stderr bytes, tolerating non-UTF-8 locales (e.g. GBK on Windows).
+pub fn pick_ytdlp_error(stderr: &[u8]) -> String {
+    let mut picker = StderrPicker::default();
+    for line in String::from_utf8_lossy(stderr).lines() {
+        picker.push(line);
+    }
+    picker.finish()
+}
+
+/// Reads yt-dlp stderr line-by-line as raw bytes so non-UTF-8 characters never abort reading and drop later `ERROR:` lines.
+async fn read_ytdlp_stderr_from<R: tokio::io::AsyncRead + Unpin>(stream: R) -> String {
+    let mut picker = StderrPicker::default();
+    let mut reader = BufReader::new(stream);
+    let mut buf = Vec::new();
+    while matches!(reader.read_until(b'\n', &mut buf).await, Ok(n) if n > 0) {
+        picker.push(&String::from_utf8_lossy(&buf));
+        buf.clear();
+    }
+    picker.finish()
+}
+
+/// Spawns a background task to read yt-dlp stderr while keeping the most relevant error line.
+pub fn spawn_ytdlp_stderr_tail(stderr: Option<tokio::process::ChildStderr>) -> tokio::task::JoinHandle<String> {
+    tokio::spawn(async move {
+        match stderr {
+            Some(s) => read_ytdlp_stderr_from(s).await,
+            None => String::new(),
+        }
+    })
+}
+
 /// Downloads a video's audio (with the bot-check fallbacks).
 pub async fn youtube_audio(ytdlp: &Path, video_id: &str, dir: &Path, cancel: Arc<AtomicBool>) -> Result<PathBuf> {
     with_bot_fallback(|extra| { let c = cancel.clone(); async move { let x: Vec<&str> = extra.iter().map(String::as_str).collect(); youtube_audio_with(ytdlp, video_id, dir, c, &x).await } }).await
@@ -555,12 +609,7 @@ async fn youtube_audio_with(ytdlp: &Path, video_id: &str, dir: &Path, cancel: Ar
     cmd.args(["-f", "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/18", "--no-playlist", "--no-part"]).args(extra).arg("-o").arg(&template);
     cmd.arg(format!("https://www.youtube.com/watch?v={video_id}")).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
     let mut child = cmd.spawn().context("无法启动 yt-dlp")?;
-    let stderr = child.stderr.take();
-    let tail = tokio::spawn(async move {
-        let mut text = String::new();
-        if let Some(s) = stderr { let mut lines = BufReader::new(s).lines(); while let Ok(Some(l)) = lines.next_line().await { text = l; } }
-        text
-    });
+    let tail = spawn_ytdlp_stderr_tail(child.stderr.take());
     loop {
         if cancel.load(Ordering::Relaxed) { let _ = child.kill().await; return Err(anyhow!("已取消")); }
         if let Some(status) = child.try_wait()? {
@@ -612,11 +661,7 @@ async fn youtube_video_with(ytdlp: &Path, ffmpeg: Option<&Path>, video_id: &str,
             if let Some(v) = re.captures(&l).and_then(|c| c[1].parse::<f64>().ok()) { let _ = tx.send(v / 100.0); }
         }
     });
-    let tail = tokio::spawn(async move {
-        let mut text = String::new();
-        if let Some(s) = stderr { let mut lines = BufReader::new(s).lines(); while let Ok(Some(l)) = lines.next_line().await { text = l; } }
-        text
-    });
+    let tail = spawn_ytdlp_stderr_tail(stderr);
     // Picture then sound, each 0–100%: the picture is most of the bytes.
     let (mut part, mut last) = (0usize, 0.0f64);
     loop {
@@ -734,7 +779,7 @@ async fn stream_once(ytdlp: &Path, video_id: &str, hls: bool, extra: &[String]) 
     cmd.arg(format!("https://www.youtube.com/watch?v={video_id}"));
     let out = tokio::time::timeout(std::time::Duration::from_secs(45), cmd.output()).await.map_err(|_| anyhow!("获取视频地址超时"))?.context("无法启动 yt-dlp")?;
     let info: serde_json::Value = serde_json::from_slice(&out.stdout).map_err(|_| {
-        anyhow!("无法获取视频地址：{}", String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("").chars().take(200).collect::<String>())
+        anyhow!("无法获取视频地址：{}", pick_ytdlp_error(&out.stderr).chars().take(200).collect::<String>())
     })?;
     if let Some(d) = info["duration"].as_f64().filter(|d| *d > 0.0) { DURATIONS.lock().unwrap().insert(video_id.to_string(), d); }
     let formats = info["formats"].as_array().cloned().unwrap_or_default();
@@ -1218,5 +1263,42 @@ mod video_file_tests {
         assert!((pcm.len() as f64 / 16000.0 - 3.0).abs() < 0.3, "{} samples", pcm.len());
         assert!(pcm.iter().any(|x| x.abs() > 0.05));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod ytdlp_stderr_tests {
+    use super::*;
+
+    #[test]
+    fn picks_gbk_bot_error_after_warning() {
+        // Real yt-dlp Windows CP936/GBK stderr: WARNING line followed by ERROR line containing GBK 0xA1 0xAF for "’".
+        let mut raw = b"WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\r\nERROR: [youtube] X90Z02hojbc: Sign in to confirm you".to_vec();
+        raw.extend_from_slice(&[0xA1, 0xAF]);
+        raw.extend_from_slice(b"re not a bot. Use --cookies for authentication.\r\n\r\n");
+
+        let picked = pick_ytdlp_error(&raw);
+        assert!(picked.starts_with("ERROR: [youtube] X90Z02hojbc:"), "got {picked}");
+        assert!(bot_check(&picked), "bot_check should match: {picked}");
+    }
+
+    #[test]
+    fn prefers_error_even_if_warning_follows_and_falls_back_to_last_non_empty() {
+        let with_trailing_warn = b"WARNING: first\nERROR: [youtube] bad video\nWARNING: trailing\n\n";
+        assert_eq!(pick_ytdlp_error(with_trailing_warn), "ERROR: [youtube] bad video");
+
+        let only_warnings = b"WARNING: first\nWARNING: second\n\n";
+        assert_eq!(pick_ytdlp_error(only_warnings), "WARNING: second");
+    }
+
+    #[tokio::test]
+    async fn streaming_stderr_reader_survives_non_utf8_bytes() {
+        let mut raw = b"WARNING: [youtube] No title found in player responses; falling back to title from initial data.\nERROR: [youtube] X90Z02hojbc: Sign in to confirm you".to_vec();
+        raw.extend_from_slice(&[0xA1, 0xAF]);
+        raw.extend_from_slice(b"re not a bot.\n");
+
+        let picked = read_ytdlp_stderr_from(std::io::Cursor::new(raw)).await;
+        assert!(picked.starts_with("ERROR: [youtube] X90Z02hojbc:"), "got {picked}");
+        assert!(bot_check(&picked), "bot_check should match: {picked}");
     }
 }

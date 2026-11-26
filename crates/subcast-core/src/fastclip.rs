@@ -97,7 +97,7 @@ async fn resolve(ytdlp: &Path, video_id: &str, max_h: u32) -> Result<Pair> {
         let mut cmd = asr::ytdlp_command(ytdlp);
         cmd.args(["-j", "--no-playlist", "--no-warnings"]).args(&extra).arg(format!("https://www.youtube.com/watch?v={video_id}"));
         let out = tokio::time::timeout(std::time::Duration::from_secs(60), cmd.output()).await.map_err(|_| anyhow!("获取视频地址超时"))?.context("无法启动 yt-dlp")?;
-        serde_json::from_slice(&out.stdout).map_err(|_| anyhow!("无法获取视频地址：{}", String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("").chars().take(200).collect::<String>()))
+        serde_json::from_slice(&out.stdout).map_err(|_| anyhow!("无法获取视频地址：{}", asr::pick_ytdlp_error(&out.stderr).chars().take(200).collect::<String>()))
     }).await?;
     let formats = info["formats"].as_array().cloned().unwrap_or_default();
     let https = |f: &&serde_json::Value| f["protocol"].as_str() == Some("https") && f["url"].is_string();

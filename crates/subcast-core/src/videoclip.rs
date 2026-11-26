@@ -1063,17 +1063,7 @@ async fn download_youtube_section_once(
     .stderr(std::process::Stdio::piped());
 
     let mut child = cmd.spawn().context("无法启动 yt-dlp")?;
-    let stderr = child.stderr.take();
-    let tail = tokio::spawn(async move {
-        let mut text = String::new();
-        if let Some(s) = stderr {
-            let mut lines = BufReader::new(s).lines();
-            while let Ok(Some(l)) = lines.next_line().await {
-                if !l.trim().is_empty() { text = l; }
-            }
-        }
-        text
-    });
+    let tail = asr::spawn_ytdlp_stderr_tail(child.stderr.take());
     loop {
         if cancel.load(Ordering::Relaxed) {
             let _ = child.kill().await;
