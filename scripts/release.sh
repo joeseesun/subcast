@@ -73,7 +73,7 @@ if [ "$SKIP_MAC" = 0 ]; then
     DSYM_DIR="release/dsym/$VERSION/$ARCH"
     rm -rf "$DSYM_DIR" && mkdir -p "$DSYM_DIR"
     for BIN in subcast subcast-cli; do
-      cp -R "src-tauri/target/$TARGET/release/$BIN.dSYM" "$DSYM_DIR/"
+      cp -RL "src-tauri/target/$TARGET/release/$BIN.dSYM" "$DSYM_DIR/" # -L: cargo links it into deps/
       [ "$(dwarfdump --uuid "$DSYM_DIR/$BIN.dSYM" | awk '{print $2}')" = "$(dwarfdump --uuid "src-tauri/target/$TARGET/release/$BIN" | awk '{print $2}')" ] \
         || { echo "dSYM UUID mismatch for $BIN ($ARCH)" >&2; exit 1; }
     done
