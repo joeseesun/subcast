@@ -1949,6 +1949,14 @@ button.track-pick:focus-visible { background: var(--line); color: var(--text); }
 .ew-know { padding-left: 0; padding-right: 0; }
 .lw.open, .lines.learning .lw.open:hover { color: var(--on-ink); background: var(--ink); padding: 1px 3px; margin: 0 -3px; }
 .fill-ico { fill: currentColor; }
+/* Clickable words in the subtitles over the video and under the cover. Over the picture the text is light on
+   dark whatever the theme, so saved words get a tint of the accent rather than the panel's soft fill. */
+.sub-learn .lw { cursor: pointer; border-radius: 3px; }
+@media (hover: hover) { .audio-sub .sub-learn .lw:not(.open):hover { background: var(--soft-hover); } .video .sub-learn .lw:not(.open):hover { background: rgba(255,255,255,.18); } }
+.video .sub-learn .lw.saved { color: #fff; background: color-mix(in srgb, var(--accent) 38%, transparent); }
+.video .sub-learn .lw.got { color: color-mix(in srgb, var(--accent) 55%, #fff); }
+.video .sub-learn .lw.open { color: #111; background: #fff; }
+.word-card.over-video { z-index: 450; }
 .btn.play svg { color: var(--accent); }
 
 .word-card { position: fixed; z-index: 60; width: 320px; padding: 16px; border: 1px solid transparent; border-radius: 14px; background: var(--panel); box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.04), 0 12px 32px -4px rgba(0,0,0,.16); }
