@@ -12,16 +12,20 @@ use std::path::PathBuf;
 /// Past this size the log moves to `panic.log.1` (the older copy is dropped), so it never grows unbounded.
 const MAX_BYTES: u64 = 1024 * 1024;
 
+/// The text a panic was raised with (`panic!("…")` gives `&str` or `String`).
+pub fn message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload.downcast_ref::<&str>().copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("(non-text payload)")
+}
+
 /// Installs the hook. Call once, early in `setup`, with the app log folder and the app version.
 pub fn install(dir: PathBuf, version: String) {
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("panic.log");
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let payload = info.payload();
-        let msg = payload.downcast_ref::<&str>().copied()
-            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-            .unwrap_or("(non-text payload)");
+        let msg = message(info.payload());
         let at = info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column())).unwrap_or_default();
         let thread = std::thread::current();
         let line = format!(
