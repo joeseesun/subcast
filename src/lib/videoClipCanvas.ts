@@ -161,13 +161,15 @@ export function buildClipCues(
 }
 
 /** A bilingual segment as cue rows whose two lines mean the same thing: the model's split when it kept both texts
- *  whole, else one row per sentence when both sides have the same sentences, else the whole segment as one row
- *  (the renderer wraps each language to two lines). Only a pair too long for two lines is split by length. */
+ *  whole, else one row per sentence when both sides have the same sentences and each fits one line. A longer
+ *  pair is split by length: the CJK side at word boundaries, the other side between words in proportion. */
 function bilingualParts(orig: string, tr: string, maxCjk: number, model?: PairLines): { orig: string; zh?: string }[] {
   if (model && model.orig.length === model.tr.length && sameChars(model.orig, orig) && sameChars(model.tr, tr)) {
     return model.orig.map((o, k) => ({ orig: o, zh: model.tr[k] })).filter((r) => r.orig || r.zh);
   }
-  const fits = (text: string) => text.length <= (isCjk(text) ? maxCjk : Math.round(maxCjk * 2.3)) * 2;
+  // One line per side: the renderer wraps CJK by pixel width, character by character, so anything longer would
+  // break mid-word again (or lose its tail past two lines).
+  const fits = (text: string) => text.length <= (isCjk(text) ? maxCjk : Math.round(maxCjk * 2.3));
   const rows: { orig: string; zh?: string }[] = [];
   for (const p of pairBySentence(orig, tr) ?? [{ orig, tr }]) {
     if (fits(p.orig) && fits(p.tr)) { rows.push({ orig: tidyLine(p.orig), zh: tidyLine(p.tr) }); continue; }

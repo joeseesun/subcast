@@ -183,6 +183,9 @@ export async function aiPairBreaks(items: { i: number; orig: string; tr: string 
     if (!src || !Array.isArray(l.orig) || !Array.isArray(l.tr) || !l.orig.length || l.orig.length !== l.tr.length) continue;
     const orig = l.orig.map((p) => String(p)), tr = l.tr.map((p) => String(p));
     if (bare(orig.join("")) !== bare(src.orig) || bare(tr.join("")) !== bare(src.tr)) continue;
+    // A part longer than one line would be wrapped mid-word by the renderer: use the deterministic split instead.
+    const tooLong = (p: string) => p.length > (isCjk(p) ? max : latin);
+    if (orig.some(tooLong) || tr.some(tooLong)) continue;
     out[src.i] = { orig: orig.map(tidyLine), tr: tr.map(tidyLine) };
   }
   return out;
