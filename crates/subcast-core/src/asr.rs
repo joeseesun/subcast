@@ -466,7 +466,10 @@ pub fn ytdlp_command(ytdlp: &Path) -> tokio::process::Command {
     // A dead connection fails in seconds instead of hanging the player on "正在获取视频地址".
     cmd.args(["--socket-timeout", "15"]);
     #[cfg(windows)]
-    { cmd.creation_flags(0x08000000); }
+    {
+        cmd.creation_flags(0x08000000);
+        cmd.args(["--encoding", "utf-8"]);
+    }
     cmd.kill_on_drop(true);
     cmd
 }
