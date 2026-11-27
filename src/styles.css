@@ -403,6 +403,8 @@ h1, h2, .ep-name { text-wrap: balance; }
 /* status line: the one place an episode's subtitle state is shown */
 .status-line { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--text-2); }
 .status-text { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: fade .2s var(--ease); }
+.status-line.wrap-text { flex-wrap: wrap; row-gap: 4px; }
+.status-line.wrap-text .status-text { display: block; flex: 0 0 100%; order: 1; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
 .bar.slim { flex: 0 1 90px; height: 3px; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .search-row { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); color: var(--muted); }

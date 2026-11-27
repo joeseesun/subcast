@@ -255,6 +255,8 @@ const dict: Record<string, string> = {
   "搜索文稿（⌘F）": "Search transcript (⌘F)",
   "{engine} · 正在翻译 {done}/{total}": "{engine} · Translating {done}/{total}",
   "已翻译 {done}/{total}": "Translated {done}/{total}",
+  "翻译服务请求过多，请稍后重试（HTTP 429）": "Too many translation requests. Try again shortly (HTTP 429)",
+  "翻译服务暂时出错（HTTP {status}）": "The translation service encountered a temporary error (HTTP {status})",
   "继续翻译": "Continue translating",
   "翻译成中文": "Translate to Chinese",
   "用模型重译": "Retranslate with model",

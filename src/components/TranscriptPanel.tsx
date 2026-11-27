@@ -182,10 +182,19 @@ export function useModelDownload(onDone: () => void) {
   return { downloading, start, cancel: (id: string) => api.cancelJob(`model:${id}`) };
 }
 
-/** The one line under the tabs that says how this episode's subtitles stand, with the one action that applies. */
-function StatusLine({ left, text, spin, progress, action, right, title }: { left?: React.ReactNode; text: React.ReactNode; spin?: boolean; progress?: number; action?: React.ReactNode; right?: React.ReactNode; title?: string }) {
+/** Subtitle status and its action, below the tabs. */
+function StatusLine({ left, text, spin, progress, action, right, title, wrapText }: {
+  left?: React.ReactNode;
+  text: React.ReactNode;
+  spin?: boolean;
+  progress?: number;
+  action?: React.ReactNode;
+  right?: React.ReactNode;
+  title?: string;
+  wrapText?: boolean;
+}) {
   return (
-    <div className="status-line" data-source={title}>
+    <div className={wrapText ? "status-line wrap-text" : "status-line"} data-source={title}>
       {left}
       <span className="status-text" key={typeof text === "string" ? text : undefined}>{spin && <Loader2 size={13} className="spin" />}{text}</span>
       {progress != null && <div className="bar slim"><div style={{ width: `${Math.max(2, progress * 100)}%` }} /></div>}
@@ -567,6 +576,7 @@ export function TranscriptPanel({ ep }: { ep: Episode }) {
   const providerName = providerFor(settings, "translate")?.name;
   const engineName = translation?.engine === "shared" ? t("共享译文") : translation?.engine === "youtube" ? t("节目方中文字幕") : translation?.engine === "google" ? t("谷歌翻译") : t("{name}翻译", { name: providerName ? t(providerName) : t("模型") });
   const error = startError ?? translation?.error;
+  const retryableStatus = error?.match(/翻译服务返回 (429|5\d{2})\b/)?.[1];
   const pending = wantsZh && (running || (!error && done < total));
   const start = (force?: "llm" | "google") => { setStartError(null); translateEpisode(ep, transcript, force).catch((e) => setStartError(rawErrorText(e))); };
 
@@ -615,8 +625,26 @@ export function TranscriptPanel({ ep }: { ep: Episode }) {
   let status: React.ReactNode;
   if (!wantsZh) status = <StatusLine left={<span className="source-tag">{source}</span>} text="" right={searchBtn} />;
   else if (running) status = <StatusLine left={modeControl} text={t("{engine} · 正在翻译 {done}/{total}", { engine: engineName, done, total })} spin progress={done / total} action={<button className="btn ghost sm" onClick={() => stopTranslation(ep.id)}>{t("停止")}</button>} right={searchBtn} />;
-  else if (error && /设置|API Key|模型/.test(error)) status = <StatusLine left={modeControl} text={tr(error)} action={<button className="btn primary sm" onClick={() => openSettings("model")}>{t("去设置")}</button>} right={searchBtn} />;
-  else if (done < total && (error || translation?.failed)) status = <StatusLine left={modeControl} text={`${t("已翻译 {done}/{total}", { done, total })}${error ? ` · ${tr(error).slice(0, 40)}` : ""}`} action={<button className="btn primary sm" onClick={() => start()}>{t("重试")}</button>} right={searchBtn} />;
+  else if (retryableStatus) {
+    const message = retryableStatus === "429"
+      ? t("翻译服务请求过多，请稍后重试（HTTP 429）")
+      : t("翻译服务暂时出错（HTTP {status}）", { status: retryableStatus });
+    status = (
+      <StatusLine left={modeControl} text={message} wrapText
+        action={<button className="btn primary sm" onClick={() => start()}>{t("重试")}</button>} right={searchBtn} />
+    );
+  }
+  else if (error && /设置|API Key|模型/.test(error)) status = (
+    <StatusLine left={modeControl} text={tr(error)} wrapText
+      action={<button className="btn primary sm" onClick={() => openSettings("model")}>{t("去设置")}</button>} right={searchBtn} />
+  );
+  else if (done < total && (error || translation?.failed)) {
+    const progressText = t("已翻译 {done}/{total}", { done, total });
+    status = (
+      <StatusLine left={modeControl} text={error ? `${progressText} · ${tr(error)}` : progressText} wrapText={!!error}
+        action={<button className="btn primary sm" onClick={() => start()}>{t("重试")}</button>} right={searchBtn} />
+    );
+  }
   else if (done < total) status = <StatusLine left={modeControl} text={done ? t("已翻译 {done}/{total}", { done, total }) : source} action={<button className="btn primary sm" onClick={() => start()}>{done ? t("继续翻译") : t("翻译成中文")}</button>} right={searchBtn} />;
   else status = <StatusLine left={modeControl} text="" title={`${source} · ${engineName}`} action={translation?.engine === "google" && canUpgrade ? <button className="btn ghost sm" onClick={() => start("llm")}>{t("用模型重译")}</button> : undefined} right={searchBtn} />;
 
