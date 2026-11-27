@@ -319,11 +319,15 @@ fn ytdlp_asset() -> &'static str {
 }
 
 /// Downloads yt-dlp from the mirror, else GitHub, and keeps it only if it matches that release's SHA2-256SUMS.
-pub async fn install_ytdlp(data: &Path, cancel: &AtomicBool, mut progress: impl FnMut(u64, Option<u64>)) -> Result<PathBuf> {
+pub async fn install_ytdlp(data: &Path, cancel: &AtomicBool, progress: impl FnMut(u64, Option<u64>)) -> Result<PathBuf> {
+    install_ytdlp_from(data, &[YTDLP_MIRROR, YTDLP_GITHUB], cancel, progress).await
+}
+
+async fn install_ytdlp_from(data: &Path, sources: &[&str], cancel: &AtomicBool, mut progress: impl FnMut(u64, Option<u64>)) -> Result<PathBuf> {
     let name = ytdlp_asset();
     let dest = data.join("bin").join(exe("yt-dlp"));
     let mut failure = None;
-    for base in [YTDLP_MIRROR, YTDLP_GITHUB] {
+    for &base in sources {
         match fetch_checked(base, name, &dest, cancel, &mut progress).await {
             Ok(()) => { failure = None; break; }
             Err(e) if e.to_string().contains("已取消") => return Err(e),
@@ -403,19 +407,41 @@ pub async fn update_ytdlp(data: &Path, force: bool) -> Result<bool> {
     }
     if let Some(dir) = stamp.parent() { std::fs::create_dir_all(dir)?; }
     std::fs::write(&stamp, b"")?;
-    let latest = match net::get_text(&format!("{YTDLP_MIRROR}/VERSION")).await {
-        Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
-        _ => {
-            let res = net::client().get("https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest")
-                .header("User-Agent", "SubCast").header("Accept", "application/vnd.github+json").send().await?;
-            if !res.status().is_success() { return Err(anyhow!("GitHub {}", res.status().as_u16())); }
-            res.json::<serde_json::Value>().await?["tag_name"].as_str().unwrap_or_default().to_string()
-        }
+    // Both are asked: the mirror can fall behind GitHub when its sync job stops, and an old yt-dlp is exactly what
+    // YouTube breaks, so then only GitHub has a release that works.
+    let (mirror, github) = tokio::join!(mirror_ytdlp_version(), github_ytdlp_version());
+    let (latest, sources): (String, &[&str]) = match (mirror, github) {
+        (Ok(m), Ok(g)) if newer_version(&g, &m) => (g, &[YTDLP_GITHUB]),
+        (Ok(m), _) => (m, &[YTDLP_MIRROR, YTDLP_GITHUB]),
+        (Err(_), Ok(g)) => (g, &[YTDLP_MIRROR, YTDLP_GITHUB]),
+        (Err(_), Err(e)) => return Err(e),
     };
     if latest.is_empty() { return Ok(false); }
-    if own.is_file() && ytdlp_version(&own).await.as_deref() == Some(latest.as_str()) { return Ok(false); }
-    install_ytdlp(data, &AtomicBool::new(false), |_, _| {}).await?;
+    // Never back to an older one: a copy taken from GitHub stays when only the stale mirror answers later.
+    if own.is_file() && ytdlp_version(&own).await.is_some_and(|cur| cur == latest || newer_version(&cur, &latest)) { return Ok(false); }
+    install_ytdlp_from(data, sources, &AtomicBool::new(false), |_, _| {}).await?;
     Ok(true)
+}
+
+async fn mirror_ytdlp_version() -> Result<String> {
+    let v = net::get_text(&format!("{YTDLP_MIRROR}/VERSION")).await?.trim().to_string();
+    // Only GitHub's error is ever shown (when both fail), so this one needs no translation.
+    if v.is_empty() { return Err(anyhow!("mirror VERSION is empty")); }
+    Ok(v)
+}
+
+async fn github_ytdlp_version() -> Result<String> {
+    let res = net::client().get("https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest")
+        .header("User-Agent", "SubCast").header("Accept", "application/vnd.github+json").send().await?;
+    if !res.status().is_success() { return Err(anyhow!("GitHub {}", res.status().as_u16())); }
+    Ok(res.json::<serde_json::Value>().await?["tag_name"].as_str().unwrap_or_default().to_string())
+}
+
+/// yt-dlp versions are dates with an optional build number (`2026.11.23`, `2026.11.22.232654`); anything else
+/// counts as not newer.
+fn newer_version(a: &str, b: &str) -> bool {
+    let parse = |v: &str| v.split('.').map(|p| p.parse::<u64>()).collect::<Result<Vec<_>, _>>();
+    matches!((parse(a), parse(b)), (Ok(x), Ok(y)) if x > y)
 }
 
 /// Runs a yt-dlp job; when it fails, updates yt-dlp (if a newer one exists) and tries once more.
@@ -1218,5 +1244,20 @@ mod video_file_tests {
         assert!((pcm.len() as f64 / 16000.0 - 3.0).abs() < 0.3, "{} samples", pcm.len());
         assert!(pcm.iter().any(|x| x.abs() > 0.05));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod ytdlp_version_tests {
+    use super::newer_version;
+    #[test]
+    fn compares_release_dates() {
+        assert!(newer_version("2026.11.23", "2026.10.26"));
+        assert!(newer_version("2026.11.22.232654", "2026.11.22"));
+        assert!(newer_version("2027.01.02", "2026.12.31"));
+        assert!(!newer_version("2026.10.26", "2026.11.23"));
+        assert!(!newer_version("2026.11.23", "2026.11.23"));
+        assert!(!newer_version("", "2026.11.23"));
+        assert!(!newer_version("2026.11.23", "nightly"));
     }
 }
