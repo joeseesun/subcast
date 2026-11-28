@@ -830,9 +830,10 @@ async fn webdav_get_text(file_url: &str, user: &str, pass: &str) -> Result<Optio
 }
 
 async fn webdav_put_atomic(file_url: &str, tmp_url: &str, user: &str, pass: &str, body: Vec<u8>) -> Result<()> {
+    let tmp_url = format!("{tmp_url}.{}", uuid::Uuid::new_v4());
     let put_tmp = send_retry(|| {
         net::client()
-            .put(tmp_url)
+            .put(&tmp_url)
             .basic_auth(user, Some(pass))
             .header("Content-Type", "application/json; charset=utf-8")
             .body(body.clone())
@@ -846,7 +847,7 @@ async fn webdav_put_atomic(file_url: &str, tmp_url: &str, user: &str, pass: &str
         let mv = Method::from_bytes(b"MOVE")?;
         let move_res = send_retry(|| {
             net::client()
-                .request(mv.clone(), tmp_url)
+                .request(mv.clone(), &tmp_url)
                 .basic_auth(user, Some(pass))
                 .header("Destination", file_url)
                 .header("Overwrite", "T")
@@ -868,19 +869,19 @@ async fn webdav_put_atomic(file_url: &str, tmp_url: &str, user: &str, pass: &str
             .body(body.clone())
             .send()
     })
-    .await?;
-    let code = put_direct.status().as_u16();
+    .await;
+    let _ = net::client()
+        .delete(&tmp_url)
+        .basic_auth(user, Some(pass))
+        .send()
+        .await;
+    let code = put_direct?.status().as_u16();
     if code == 401 || code == 403 {
         return Err(auth_err());
     }
     if !put_direct.status().is_success() {
         return Err(anyhow!("上传 WebDAV 同步文件失败（HTTP {code}）"));
     }
-    let _ = net::client()
-        .delete(tmp_url)
-        .basic_auth(user, Some(pass))
-        .send()
-        .await;
     Ok(())
 }
 

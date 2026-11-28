@@ -22,7 +22,7 @@ SubCast/
 - **Target path**: Isolated folder configured by `webdavPath` (default `/SubCast`), storing `<base>/<webdavPath>/subcast-sync.json` and `<base>/<webdavPath>/episodes/<episode_id>.json`.
 - **Authentication**: HTTP Basic Auth. Passwords are stored in the OS keychain (`ai.qiaomu.subcast`, account `sync.webdav`) on desktop & iOS, or private 0600 `keys.json` on Android.
 - **Directory creation**: Walk each path segment with `MKCOL`; treat `200/201/204/301/302/405` as success and verify `409` via `PROPFIND` (`Depth: 0`).
-- **Atomic writes**: `PUT <file>.tmp`, then `MOVE` with `Destination` + `Overwrite: T`; if `MOVE` is rejected by a reverse proxy, fall back to direct `PUT` and best-effort `DELETE` of `.tmp`.
+- **Atomic writes**: `PUT <file>.tmp.<UUID>`, then `MOVE` with `Destination` + `Overwrite: T`; if `MOVE` is rejected by a reverse proxy, fall back to direct `PUT` and best-effort `DELETE` of `.tmp`.
 
 ---
 
